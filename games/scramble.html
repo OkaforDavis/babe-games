@@ -71,12 +71,17 @@
         </select>
       </div>
       <div class="btn-row">
-        <button class="btn" id="start-btn">Start Game</button>
+        <button class="btn" id="start-btn">Start Game (same device)</button>
+        <button class="btn secondary" id="play-online-btn">&#127760; Play Online</button>
       </div>
+      <p style="color:var(--text-dim); font-size:0.85rem; margin-top:10px;" id="online-mode-note">
+        "Same device" is pass-and-play on one screen. "Play Online" connects you with one other person on a different device using a short room code.
+      </p>
     </div>
 
     <!-- GAME -->
     <div id="game-screen" style="display:none;">
+      <p style="text-align:center; display:none;" id="online-badge"></p>
       <div class="scoreboard">
         <div class="score-box" id="score-p1">
           <div class="name"></div>
@@ -133,6 +138,8 @@
 <script src="../js/profiles.js"></script>
 <script src="../js/notify.js"></script>
 <script>BabeNotify.init("../");</script>
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="../js/online.js"></script>
 <script src="scramble.js"></script>
 </body>
 </html>
