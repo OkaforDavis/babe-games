@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Babe Games — Fun Games to Play When Bored</title>
+<meta name="description" content="Classic Nigerian household games, reimagined for the browser: word scramble, name-place-animal-thing, chain naming and more." />
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#1a1025" />
+<link rel="icon" href="icons/icon-192.png" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div class="wrap">
+  <header class="site-header">
+    <div class="logo">Babe <span>Games</span></div>
+    <div class="header-widgets">
+      <div id="notify-widget"></div>
+      <div id="profile-widget"></div>
+    </div>
+  </header>
+
+  <section class="hero">
+    <h1>Games we grew up on, <span class="accent">now in your browser</span></h1>
+    <p>Scramble, Name-Place-Animal-Thing, chain naming and more classic Nigerian household games — built for two people, one screen, and a bit of banter.</p>
+  </section>
+
+  <div class="section-title">Play now <span class="pill">Ready</span></div>
+  <div id="ready-grid" class="grid"></div>
+
+  <div class="section-title">Coming soon</div>
+  <div id="soon-grid" class="grid"></div>
+
+  <footer>
+    Built for fun &middot; Your scores stay on your device only.
+  </footer>
+</div>
+
+<script src="js/common.js"></script>
+<script src="js/data.js"></script>
+<script src="js/profiles.js"></script>
+<script src="js/notify.js"></script>
+<script>
+  BabeNotify.init("./");
+
+  function cardHtml(game) {
+    const tag = game.status === "ready"
+      ? '<span class="tag ready">Play</span>'
+      : '<span class="tag soon">Coming soon</span>';
+    const el = document.createElement(game.status === "ready" ? "a" : "div");
+    if (game.status === "ready") el.href = game.href;
+    el.className = "card" + (game.status === "ready" ? " playable" : "");
+    el.innerHTML = `
+      <div class="emoji">${game.emoji}</div>
+      <h3>${game.title}</h3>
+      <p>${game.desc}</p>
+      ${tag}
+    `;
+    return el;
+  }
+
+  const readyGrid = document.getElementById("ready-grid");
+  const soonGrid = document.getElementById("soon-grid");
+  GAME_CATALOG.forEach((game) => {
+    const target = game.status === "ready" ? readyGrid : soonGrid;
+    target.appendChild(cardHtml(game));
+  });
+</script>
+</body>
+</html>

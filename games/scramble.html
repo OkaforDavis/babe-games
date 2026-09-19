@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Word Scramble — Babe Games</title>
+<link rel="manifest" href="../manifest.json" />
+<meta name="theme-color" content="#1a1025" />
+<link rel="icon" href="../icons/icon-192.png" />
+<link rel="apple-touch-icon" href="../icons/icon-192.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<link rel="stylesheet" href="../css/style.css" />
+</head>
+<body>
+<div class="wrap">
+  <header class="site-header">
+    <div class="logo"><a href="../index.html">Babe <span>Games</span></a></div>
+    <div class="header-widgets">
+      <nav class="crumbs"><a href="../index.html">&larr; All games</a></nav>
+      <div id="notify-widget"></div>
+      <div id="profile-widget"></div>
+    </div>
+  </header>
+
+  <div class="game-shell">
+    <h2 style="margin-top:0;">&#128288; Word Scramble</h2>
+
+    <details class="rules" open id="rules-block">
+      <summary>How to play</summary>
+      Two players take turns. Each round the game secretly picks a word from
+      your chosen category and scrambles it. The player NOT setting the round
+      has to type the correct word before the timer runs out. Score is higher
+      the faster you guess. Roles swap every round.
+    </details>
+
+    <!-- SETUP -->
+    <div id="setup-screen">
+      <div class="field">
+        <label for="p1-name">Player 1 name</label>
+        <input type="text" id="p1-name" placeholder="Player 1" />
+      </div>
+      <div class="field">
+        <label for="p2-name">Player 2 name</label>
+        <input type="text" id="p2-name" placeholder="Player 2" />
+      </div>
+      <div class="field">
+        <label for="category">Category</label>
+        <select id="category">
+          <option value="mixed">Mixed (all categories)</option>
+          <option value="food">Food</option>
+          <option value="animal">Animal</option>
+          <option value="place">Place</option>
+          <option value="name">Name</option>
+          <option value="thing">Thing</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="rounds">Rounds per player</label>
+        <select id="rounds">
+          <option value="3">3</option>
+          <option value="5" selected>5</option>
+          <option value="8">8</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="time">Time per round</label>
+        <select id="time">
+          <option value="30">30 seconds</option>
+          <option value="60" selected>60 seconds</option>
+          <option value="90">90 seconds</option>
+        </select>
+      </div>
+      <div class="btn-row">
+        <button class="btn" id="start-btn">Start Game</button>
+      </div>
+    </div>
+
+    <!-- GAME -->
+    <div id="game-screen" style="display:none;">
+      <div class="scoreboard">
+        <div class="score-box" id="score-p1">
+          <div class="name"></div>
+          <div class="val">0</div>
+        </div>
+        <div class="score-box" id="score-p2">
+          <div class="name"></div>
+          <div class="val">0</div>
+        </div>
+      </div>
+
+      <p style="text-align:center; color:var(--text-dim);" id="round-label"></p>
+      <p style="text-align:center;" id="turn-label"></p>
+
+      <div class="timer" id="timer-display">00:00</div>
+
+      <div class="scramble-word" id="scramble-display"></div>
+
+      <div class="field">
+        <label for="guess-input" id="guess-label">Type your answer</label>
+        <input type="text" id="guess-input" autocomplete="off" placeholder="Your answer..." />
+      </div>
+      <div class="feedback" id="feedback"></div>
+
+      <div class="btn-row">
+        <button class="btn" id="submit-guess">Submit</button>
+        <button class="btn secondary" id="next-round" style="display:none;">Next Round &rarr;</button>
+      </div>
+    </div>
+
+    <!-- END -->
+    <div id="end-screen" style="display:none;">
+      <h3 id="winner-line" style="text-align:center;"></h3>
+      <div class="scoreboard">
+        <div class="score-box" id="final-p1">
+          <div class="name"></div>
+          <div class="val">0</div>
+        </div>
+        <div class="score-box" id="final-p2">
+          <div class="name"></div>
+          <div class="val">0</div>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn" id="play-again">Play Again</button>
+        <a class="btn secondary" href="../index.html">Back to games</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/common.js"></script>
+<script src="../js/data.js"></script>
+<script src="../js/profiles.js"></script>
+<script src="../js/notify.js"></script>
+<script>BabeNotify.init("../");</script>
+<script src="scramble.js"></script>
+</body>
+</html>

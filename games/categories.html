@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Name, Place, Animal, Thing — Babe Games</title>
+<link rel="manifest" href="../manifest.json" />
+<meta name="theme-color" content="#1a1025" />
+<link rel="icon" href="../icons/icon-192.png" />
+<link rel="apple-touch-icon" href="../icons/icon-192.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<link rel="stylesheet" href="../css/style.css" />
+</head>
+<body>
+<div class="wrap">
+  <header class="site-header">
+    <div class="logo"><a href="../index.html">Babe <span>Games</span></a></div>
+    <div class="header-widgets">
+      <nav class="crumbs"><a href="../index.html">&larr; All games</a></nav>
+      <div id="notify-widget"></div>
+      <div id="profile-widget"></div>
+    </div>
+  </header>
+
+  <div class="game-shell">
+    <h2 style="margin-top:0;">&#128308; Name, Place, Animal, Thing</h2>
+
+    <details class="rules" open>
+      <summary>How to play</summary>
+      Pick a letter. Each player, in turn on this device, gets a fixed time
+      to fill Name, Place, Animal, Thing and Food starting with that letter.
+      When everyone has gone, the group reviews every answer together and
+      the host marks each one valid or not &mdash; valid unique answers score
+      more than answers other players also had. Play as many letters as you like.
+    </details>
+
+    <!-- SETUP -->
+    <div id="setup-screen">
+      <div class="field">
+        <label>Players</label>
+        <div id="players-list"></div>
+        <div class="btn-row">
+          <button class="btn secondary small" id="add-player">+ Add player</button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="time">Time per turn</label>
+        <select id="time">
+          <option value="30">30 seconds</option>
+          <option value="45" selected>45 seconds</option>
+          <option value="60">60 seconds</option>
+        </select>
+      </div>
+      <div class="btn-row">
+        <button class="btn" id="start-btn">Start Game</button>
+      </div>
+    </div>
+
+    <!-- LETTER PICK -->
+    <div id="letter-screen" style="display:none;">
+      <p style="text-align:center; color:var(--text-dim);">Pick this round's letter</p>
+      <div class="btn-row" style="justify-content:center;">
+        <button class="btn" id="spin-letter">Spin Random Letter</button>
+      </div>
+      <div class="letter-grid" id="letter-grid"></div>
+    </div>
+
+    <!-- TURN SCREEN -->
+    <div id="turn-screen" style="display:none;">
+      <p style="text-align:center; color:var(--text-dim);" id="turn-round-label"></p>
+      <h3 style="text-align:center;" id="turn-player-label"></h3>
+      <div class="timer" id="timer-display">00:00</div>
+      <div id="turn-fields"></div>
+      <div class="btn-row">
+        <button class="btn" id="lock-in">Lock In</button>
+      </div>
+    </div>
+
+    <!-- SCORING SCREEN -->
+    <div id="scoring-screen" style="display:none;">
+      <p style="text-align:center; color:var(--text-dim);">Tap an answer to mark it valid / invalid, then finish the round.</p>
+      <div id="scoring-table"></div>
+      <div class="btn-row">
+        <button class="btn" id="finish-round">Finish Round</button>
+      </div>
+    </div>
+
+    <!-- ROUND SUMMARY -->
+    <div id="summary-screen" style="display:none;">
+      <h3 style="text-align:center;">Scores</h3>
+      <div class="scoreboard" id="summary-scores"></div>
+      <div class="btn-row">
+        <button class="btn" id="new-round">Play Another Letter</button>
+        <button class="btn secondary" id="end-game">End Game</button>
+      </div>
+    </div>
+
+    <!-- END -->
+    <div id="end-screen" style="display:none;">
+      <h3 id="winner-line" style="text-align:center;"></h3>
+      <div class="scoreboard" id="final-scores"></div>
+      <div class="btn-row">
+        <button class="btn" id="play-again">Play Again</button>
+        <a class="btn secondary" href="../index.html">Back to games</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/common.js"></script>
+<script src="../js/data.js"></script>
+<script src="../js/profiles.js"></script>
+<script src="../js/notify.js"></script>
+<script>BabeNotify.init("../");</script>
+<script src="categories.js"></script>
+</body>
+</html>

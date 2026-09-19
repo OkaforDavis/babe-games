@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Chain Naming — Babe Games</title>
+<link rel="manifest" href="../manifest.json" />
+<meta name="theme-color" content="#1a1025" />
+<link rel="icon" href="../icons/icon-192.png" />
+<link rel="apple-touch-icon" href="../icons/icon-192.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<link rel="stylesheet" href="../css/style.css" />
+</head>
+<body>
+<div class="wrap">
+  <header class="site-header">
+    <div class="logo"><a href="../index.html">Babe <span>Games</span></a></div>
+    <div class="header-widgets">
+      <nav class="crumbs"><a href="../index.html">&larr; All games</a></nav>
+      <div id="notify-widget"></div>
+      <div id="profile-widget"></div>
+    </div>
+  </header>
+
+  <div class="game-shell">
+    <h2 style="margin-top:0;">&#128279; Chain Naming</h2>
+
+    <details class="rules" open>
+      <summary>How to play</summary>
+      Choose a category. The first player names anything in it. Each player
+      after that must name something new in the same category that starts
+      with the last letter of the previous word &mdash; no repeats, and you
+      have to answer before the timer runs out. Last player standing wins.
+    </details>
+
+    <!-- SETUP -->
+    <div id="setup-screen">
+      <div class="field">
+        <label>Players</label>
+        <div id="players-list"></div>
+        <div class="btn-row">
+          <button class="btn secondary small" id="add-player">+ Add player</button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="category">Category</label>
+        <select id="category">
+          <option value="mixed">Mixed / anything goes</option>
+          <option value="food">Food</option>
+          <option value="animal">Animal</option>
+          <option value="place">Place</option>
+          <option value="name">Name</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="time">Time per turn</label>
+        <select id="time">
+          <option value="10">10 seconds</option>
+          <option value="15" selected>15 seconds</option>
+          <option value="20">20 seconds</option>
+        </select>
+      </div>
+      <div class="btn-row">
+        <button class="btn" id="start-btn">Start Game</button>
+      </div>
+    </div>
+
+    <!-- GAME -->
+    <div id="game-screen" style="display:none;">
+      <p style="text-align:center; color:var(--text-dim);" id="status-label"></p>
+      <h3 style="text-align:center;" id="turn-label"></h3>
+      <div class="timer" id="timer-display">00:00</div>
+      <p style="text-align:center;" id="requirement-label"></p>
+
+      <div class="field">
+        <input type="text" id="word-input" autocomplete="off" placeholder="Type your word..." />
+      </div>
+      <div class="feedback" id="feedback"></div>
+      <div class="btn-row">
+        <button class="btn" id="submit-word">Submit</button>
+      </div>
+
+      <ul class="chain-log" id="chain-log"></ul>
+    </div>
+
+    <!-- END -->
+    <div id="end-screen" style="display:none;">
+      <h3 id="winner-line" style="text-align:center;"></h3>
+      <p style="text-align:center; color:var(--text-dim);" id="chain-length"></p>
+      <div class="btn-row">
+        <button class="btn" id="play-again">Play Again</button>
+        <a class="btn secondary" href="../index.html">Back to games</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/common.js"></script>
+<script src="../js/data.js"></script>
+<script src="../js/profiles.js"></script>
+<script src="../js/notify.js"></script>
+<script>BabeNotify.init("../");</script>
+<script src="chain.js"></script>
+</body>
+</html>
