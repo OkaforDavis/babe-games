@@ -36,87 +36,104 @@ test("ncho four: fresh board has four seeds per pit and empty houses", () => {
   assert.strictEqual(s.pits[13], 0);
 });
 
-test("ncho four: the opening move does not sweep the board", () => {
-  // Every pit starts on four, so only pits this move feeds can be taken.
+test("ncho four: the turn keeps relaying until a seed rests in an empty pit", () => {
   const s = four();
+  s.pits = new Array(14).fill(0);
+  s.pits[0] = 1;   // one seed into pit 1
+  s.pits[1] = 2;   // pit 1 had seeds, so scoop up all 3 and carry on
+  s.pits[2] = 0;   // ...which drops into 2, 3, 4 and rests in the empty 4
+  s.pits[3] = 0;
+  s.pits[4] = 0;
+  s.pits[9] = 5;   // keeps the opponent alive
   const next = Ncho.applyAction(s, { type: "sow", pit: 0 }, 0);
-  assert.deepStrictEqual(next.lastMove.captures, [], "nothing is collected on the first move");
-  assert.strictEqual(Ncho.seedsOnBoard(next.pits), 48, "every seed is still in play");
-  assert.strictEqual(next.pits[6], 0);
-  assert.strictEqual(next.pits[13], 0);
+  assert.strictEqual(next.pits[1], 0, "pit 1 was scooped up mid-turn");
+  assert.strictEqual(next.pits[2], 1);
+  assert.strictEqual(next.pits[3], 1);
+  assert.strictEqual(next.pits[4], 1, "the last seed came to rest here");
+  assert.strictEqual(next.lastMove.steps.filter((x) => x.t === "pickup").length, 2, "one scoop-up along the way");
+});
+
+test("ncho four: a seed landing in an empty pit ends the turn straight away", () => {
+  const s = four();
+  s.pits = new Array(14).fill(0);
+  s.pits[0] = 1;
+  s.pits[1] = 0;  // empty, so the seed rests and the turn is over
+  s.pits[9] = 5;
+  const next = Ncho.applyAction(s, { type: "sow", pit: 0 }, 0);
+  assert.strictEqual(next.pits[1], 1);
+  assert.strictEqual(next.turn, 1);
+  assert.strictEqual(next.lastMove.steps.filter((x) => x.t === "drop").length, 1, "exactly one seed moved");
 });
 
 test("ncho four: seeds are never sown into either house", () => {
   const s = four();
   s.pits[0] = 20; // more than a full lap
   const next = Ncho.applyAction(s, { type: "sow", pit: 0 }, 0);
-  assert.strictEqual(next.lastMove.path.includes(6), false, "skips your own house");
-  assert.strictEqual(next.lastMove.path.includes(13), false, "skips their house");
+  const touched = next.lastMove.steps.filter((x) => x.t === "drop").map((x) => x.pit);
+  assert.strictEqual(touched.includes(6), false, "skips your own house");
+  assert.strictEqual(touched.includes(13), false, "skips their house");
 });
 
-test("ncho four: a pit you feed to four is collected by whoever owns it", () => {
+test("ncho four: a pit that hits four mid-sowing goes to its owner and play carries on", () => {
   const s = four();
   s.pits = new Array(14).fill(0);
-  s.pits[0] = 2;   // sows into pits 1 and 2
-  s.pits[1] = 3;   // -> becomes 4, owned by slot 0
-  s.pits[2] = 9;   // -> becomes 10, untouched by the rule
-  s.pits[8] = 5;   // keeps the game alive
-  const next = Ncho.applyAction(s, { type: "sow", pit: 0 }, 0);
-  assert.strictEqual(next.pits[1], 0, "the four is lifted out");
-  assert.strictEqual(next.pits[6], 4, "into its owner's house");
-  assert.strictEqual(next.lastMove.captures.length, 1);
-  assert.strictEqual(next.lastMove.captures[0].by, 0);
-});
-
-test("ncho four: your last seed making four on their side is yours", () => {
-  const s = four();
-  s.pits = new Array(14).fill(0);
-  s.pits[5] = 2;  // sows into 7 then 8
-  s.pits[7] = 1;
-  s.pits[8] = 3;  // last seed lands here making four, on slot 1's side
-  s.pits[0] = 3;  // keeps slot 0 alive
-  const next = Ncho.applyAction(s, { type: "sow", pit: 5 }, 0);
-  assert.strictEqual(next.pits[8], 0, "collected");
-  assert.strictEqual(next.pits[6], 4, "taken by the player who sowed it, not the owner");
-  assert.strictEqual(next.pits[13], 0);
-  assert.strictEqual(next.lastMove.captures[0].viaLastSeed, true);
-});
-
-test("ncho four: a four you feed on their side that isn't your last seed stays theirs", () => {
-  const s = four();
-  s.pits = new Array(14).fill(0);
-  s.pits[5] = 3;  // sows into 7, 8, 9
-  s.pits[7] = 3;  // -> four, but not the last seed, so slot 1 keeps it
-  s.pits[9] = 0;  // last seed lands here, only one seed, no capture
+  s.pits[5] = 3;  // drops into 7, 8, 9
+  s.pits[7] = 3;  // -> four on the opponent's side, not the final seed
+  s.pits[8] = 0;
+  s.pits[9] = 0;  // the final seed rests here
   s.pits[0] = 2;
   const next = Ncho.applyAction(s, { type: "sow", pit: 5 }, 0);
-  assert.strictEqual(next.pits[7], 0, "collected");
-  assert.strictEqual(next.pits[13], 4, "by its owner");
+  assert.strictEqual(next.pits[7], 0, "lifted out as it happened");
+  assert.strictEqual(next.pits[13], 4, "by the player who owns that pit");
   assert.strictEqual(next.pits[6], 0, "the sower gets nothing from it");
+  assert.strictEqual(next.pits[9], 1, "and the sowing carried on to rest here");
 });
 
-test("ncho four: one move can collect several pits at once", () => {
+test("ncho four: your final seed making four is yours, and ends the turn", () => {
   const s = four();
   s.pits = new Array(14).fill(0);
-  s.pits[0] = 3;  // sows into 1, 2, 3
-  s.pits[1] = 3;
-  s.pits[2] = 3;
-  s.pits[3] = 3;  // all three become four; the last one is the sower's anyway
-  s.pits[9] = 5;
-  const next = Ncho.applyAction(s, { type: "sow", pit: 0 }, 0);
-  assert.strictEqual(next.lastMove.captures.length, 3);
-  assert.strictEqual(next.pits[6], 12, "all three fours go home");
+  s.pits[5] = 2;  // drops into 7 then 8
+  s.pits[7] = 0;
+  s.pits[8] = 3;  // final seed makes four here, on the opponent's side
+  s.pits[0] = 3;
+  const next = Ncho.applyAction(s, { type: "sow", pit: 5 }, 0);
+  assert.strictEqual(next.pits[8], 0, "collected");
+  assert.strictEqual(next.pits[6], 4, "by whoever sowed it, not the pit's owner");
+  assert.strictEqual(next.pits[13], 0);
+  assert.strictEqual(next.lastMove.captures[0].viaLastSeed, true);
+  assert.strictEqual(next.turn, 1, "nothing left in hand, so the turn is over");
 });
 
 test("ncho four: a pit pushed past four is not collected", () => {
   const s = four();
   s.pits = new Array(14).fill(0);
   s.pits[0] = 1;
-  s.pits[1] = 4;  // becomes five
+  s.pits[1] = 4;  // becomes five, so it is scooped up and sown on
   s.pits[8] = 3;
   const next = Ncho.applyAction(s, { type: "sow", pit: 0 }, 0);
-  assert.strictEqual(next.pits[1], 5);
-  assert.deepStrictEqual(next.lastMove.captures, []);
+  assert.deepStrictEqual(next.lastMove.captures, [], "five is not four");
+  assert.strictEqual(next.pits[6], 0);
+});
+
+test("ncho four: a long relay can collect several pits in one turn", () => {
+  const s = four();
+  s.pits = new Array(14).fill(0);
+  s.pits[0] = 3;  // drops into 1, 2, 3
+  s.pits[1] = 3;  // -> four, owner slot 0
+  s.pits[2] = 3;  // -> four, owner slot 0
+  s.pits[3] = 3;  // -> four on the final seed, so also slot 0
+  s.pits[9] = 5;
+  const next = Ncho.applyAction(s, { type: "sow", pit: 0 }, 0);
+  assert.strictEqual(next.lastMove.captures.length, 3);
+  assert.strictEqual(next.pits[6], 12, "all three fours go home");
+  assert.strictEqual(next.turn, 1);
+});
+
+test("ncho four: the opening move relays without losing a seed", () => {
+  const s = four();
+  const next = Ncho.applyAction(s, { type: "sow", pit: 0 }, 0);
+  assert.strictEqual(next.pits.reduce((a, b) => a + b, 0), 48, "every seed is accounted for");
+  assert.ok(next.lastMove.steps.length > 4, "the opening move cascades rather than stopping dead");
 });
 
 test("ncho four: an empty side does not end it while the other player can still sow", () => {
@@ -172,11 +189,27 @@ test("ncho four: seeds are never created or lost", () => {
   assert.strictEqual(s.over, true, "the game reaches an end");
 });
 
-test("ncho four: a move records what the board looked like first, for the animation", () => {
+test("ncho four: a move records the board and every step, so it can be replayed", () => {
   const s = four();
   const next = Ncho.applyAction(s, { type: "sow", pit: 2 }, 0);
   assert.deepStrictEqual(next.lastMove.before, s.pits, "the pre-move board is kept");
-  assert.deepStrictEqual(next.lastMove.path, [3, 4, 5, 7], "and the route the seeds took");
+  const steps = next.lastMove.steps;
+  assert.strictEqual(steps[0].t, "pickup", "a turn starts by scooping up a pit");
+  assert.strictEqual(steps[0].pit, 2);
+  assert.deepStrictEqual(steps.slice(1, 5).map((x) => x.pit), [3, 4, 5, 7], "then drops one seed at a time");
+  assert.ok(steps.every((x) => ["pickup", "drop", "capture"].includes(x.t)), "only known step kinds");
+
+  // Replaying the steps from the recorded board must land on the real result.
+  const replay = next.lastMove.before.slice();
+  steps.forEach((step) => {
+    if (step.t === "pickup") replay[step.pit] = 0;
+    if (step.t === "drop") replay[step.pit] += 1;
+    if (step.t === "capture") {
+      replay[step.pit] -= step.seeds;
+      replay[step.by === 0 ? 6 : 13] += step.seeds;
+    }
+  });
+  assert.deepStrictEqual(replay, next.pits, "the animation and the real board agree");
 });
 
 // ---------------- Ncho: the Mancala/Ayo variant ----------------

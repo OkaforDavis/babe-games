@@ -27,6 +27,9 @@
   const PLAY_PITS = P1_PITS.concat(P2_PITS);
   const CAPTURE_AT = 4;
   const STALE_MOVE_LIMIT = 60;
+  // Relay sowing can in principle cycle forever on a contrived board, so a
+  // single turn is capped. In real play it is never close to this.
+  const MAX_DROPS_PER_TURN = 2000;
 
   const pitsOf = (slot) => (slot === 0 ? P1_PITS : P2_PITS);
   const houseOf = (slot) => (slot === 0 ? P1_HOUSE : P2_HOUSE);
@@ -76,36 +79,64 @@
 
   // ---------------- the main Ncho: capture on four ----------------
 
+  function nextPlayPit(idx) {
+    let next = idx;
+    do {
+      next = (next + 1) % 14;
+    } while (next === P1_HOUSE || next === P2_HOUSE); // houses are never sown into
+    return next;
+  }
+
+  // Relay sowing: you keep going as long as your last seed drops into a pit
+  // that already had seeds in it — you scoop that pit up, hand and all, and
+  // carry on. The turn only ends when a seed comes to rest in an empty pit
+  // (or when it makes a four, which gets lifted straight out, leaving
+  // nothing in your hand to continue with).
   function sowFour(state, pit, slot) {
     const before = state.pits.slice();
     const pits = state.pits.slice();
-
-    let seeds = pits[pit];
-    pits[pit] = 0;
-    let idx = pit;
-    const path = [];
-
-    while (seeds > 0) {
-      idx = (idx + 1) % 14;
-      if (idx === P1_HOUSE || idx === P2_HOUSE) continue; // houses aren't sown into
-      pits[idx] += 1;
-      path.push(idx);
-      seeds -= 1;
-    }
-
-    // Only pits this sowing actually dropped a seed into can be collected —
-    // otherwise the opening board (every pit already on four) would be
-    // swept on the very first move. Of those, any now sitting on exactly
-    // four goes to the pit's owner, except the pit the last seed landed in,
-    // which belongs to whoever sowed it.
+    const steps = [];
     const captures = [];
-    [...new Set(path)].forEach((i) => {
-      if (pits[i] !== CAPTURE_AT) return;
-      const collector = i === idx ? slot : ownerOf(i);
-      captures.push({ pit: i, by: collector, seeds: CAPTURE_AT, viaLastSeed: i === idx });
-      pits[houseOf(collector)] += CAPTURE_AT;
-      pits[i] = 0;
-    });
+
+    let hand = pits[pit];
+    pits[pit] = 0;
+    steps.push({ t: "pickup", pit, count: hand });
+
+    let cursor = pit;
+    let drops = 0;
+    let done = false;
+
+    while (!done) {
+      while (hand > 0) {
+        cursor = nextPlayPit(cursor);
+        pits[cursor] += 1;
+        hand -= 1;
+        drops += 1;
+        steps.push({ t: "drop", pit: cursor });
+
+        // A pit landing on exactly four is lifted out there and then.
+        if (pits[cursor] === CAPTURE_AT) {
+          const lastInHand = hand === 0;
+          const by = lastInHand ? slot : ownerOf(cursor);
+          pits[houseOf(by)] += CAPTURE_AT;
+          pits[cursor] = 0;
+          captures.push({ pit: cursor, by, seeds: CAPTURE_AT, viaLastSeed: lastInHand });
+          steps.push({ t: "capture", pit: cursor, by, seeds: CAPTURE_AT });
+          // Collected with your final seed: nothing left to scoop up, so
+          // the turn is over.
+          if (lastInHand) done = true;
+        }
+
+        if (drops >= MAX_DROPS_PER_TURN) { done = true; break; }
+      }
+      if (done) break;
+
+      // The hand is empty and the last seed is resting at the cursor.
+      if (pits[cursor] === 1) break; // it landed in an empty pit: turn over
+      hand = pits[cursor];
+      pits[cursor] = 0;
+      steps.push({ t: "pickup", pit: cursor, count: hand });
+    }
 
     const mine = captures.filter((c) => c.by === slot).length;
     const theirs = captures.length - mine;
@@ -119,7 +150,7 @@
       pits,
       turn: 1 - slot,
       message,
-      lastMove: { slot, from: pit, path, before, captures, extraTurn: false },
+      lastMove: { slot, from: pit, before, steps, captures, extraTurn: false },
       movesSinceCapture: captures.length ? 0 : state.movesSinceCapture + 1,
       rev: state.rev + 1,
     };
@@ -169,17 +200,18 @@
     const pits = state.pits.slice();
     const ownHouse = houseOf(slot);
     const opponentHouse = houseOf(1 - slot);
+    const steps = [];
 
     let seeds = pits[pit];
     pits[pit] = 0;
+    steps.push({ t: "pickup", pit, count: seeds });
     let idx = pit;
-    const path = [];
 
     while (seeds > 0) {
       idx = (idx + 1) % 14;
       if (idx === opponentHouse) continue;
       pits[idx] += 1;
-      path.push(idx);
+      steps.push({ t: "drop", pit: idx });
       seeds -= 1;
     }
 
@@ -192,12 +224,15 @@
       message = "Landed in your house — go again!";
     } else if (pitsOf(slot).includes(idx) && pits[idx] === 1 && pits[oppositePit(idx)] > 0) {
       const opp = oppositePit(idx);
-      const total = pits[idx] + pits[opp];
-      pits[ownHouse] += total;
-      captures.push({ pit: idx, opposite: opp, by: slot, seeds: total });
+      const mine = pits[idx];
+      const theirs = pits[opp];
+      pits[ownHouse] += mine + theirs;
       pits[idx] = 0;
       pits[opp] = 0;
-      message = `Capture! +${total} seeds.`;
+      captures.push({ pit: idx, opposite: opp, by: slot, seeds: mine + theirs });
+      steps.push({ t: "capture", pit: opp, by: slot, seeds: theirs });
+      steps.push({ t: "capture", pit: idx, by: slot, seeds: mine });
+      message = `Capture! +${mine + theirs} seeds.`;
     }
 
     const next = {
@@ -205,7 +240,7 @@
       pits,
       turn: extraTurn ? slot : 1 - slot,
       message,
-      lastMove: { slot, from: pit, path, before, captures, extraTurn },
+      lastMove: { slot, from: pit, before, steps, captures, extraTurn },
       rev: state.rev + 1,
     };
 

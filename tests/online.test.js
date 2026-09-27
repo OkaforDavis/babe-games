@@ -206,10 +206,25 @@ test("online: the capture-on-four variant syncs captures and the animation data"
 
   s.host.dispatch({ type: "sow", pit: 0 });
   s.sync();
-  assert.ok(Array.isArray(s.seen.guest.lastMove.before), "the pre-move board reaches the other device");
-  same(s.seen.guest.lastMove.before, s.seen.host.lastMove.before, "so both can replay the same animation");
-  same(s.seen.guest.lastMove.path, s.seen.host.lastMove.path, "along the same route");
-  same(s.seen.guest.lastMove.captures, s.seen.host.lastMove.captures, "collecting the same pits");
+  const move = s.seen.guest.lastMove;
+  assert.ok(Array.isArray(move.before), "the pre-move board reaches the other device");
+  same(move.before, s.seen.host.lastMove.before, "so both can replay the same animation");
+  same(move.steps, s.seen.host.lastMove.steps, "following the same route, scoop for scoop");
+  same(move.captures, s.seen.host.lastMove.captures, "collecting the same pits");
+  assert.ok(move.steps.length > 1, "a relay records more than one step");
+
+  // The guest animates from these steps, so replaying them has to land on
+  // exactly the board the guest was sent.
+  const replay = move.before.slice();
+  move.steps.forEach((step) => {
+    if (step.t === "pickup") replay[step.pit] = 0;
+    if (step.t === "drop") replay[step.pit] += 1;
+    if (step.t === "capture") {
+      replay[step.pit] -= step.seeds;
+      replay[step.by === 0 ? 6 : 13] += step.seeds;
+    }
+  });
+  same(replay, s.seen.guest.pits, "the guest's animation ends on the guest's real board");
   s.stop();
 });
 

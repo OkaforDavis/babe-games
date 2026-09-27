@@ -322,40 +322,54 @@
     setTimeout(() => node.seeds.classList.remove("capture-flash"), 800);
   }
 
+  // Replays the turn exactly as the rules recorded it: scoop a pit up, drop
+  // the seeds one by one, lift out any four, and on a relay scoop up again
+  // and keep going.
   async function playMove(move) {
     const token = ++animToken;
     const counts = move.before.slice();
+    const steps = move.steps || [];
+    const drops = steps.filter((s) => s.t === "drop").length;
+    // Long relays get a quicker hand so the whole turn stays watchable.
+    const stepMs = Math.max(28, Math.min(130, 3500 / Math.max(1, drops)));
+    const soundEvery = Math.max(1, Math.ceil(drops / 14));
 
-    paintPit(move.from, 0); // seeds lifted out of the pit
-    counts[move.from] = 0;
+    let cursor = move.from;
+    let dropIndex = 0;
 
-    const stepMs = Math.max(55, Math.min(150, 1500 / Math.max(1, move.path.length)));
-    let from = move.from;
-    for (const target of move.path) {
-      await flySeed(from, target, stepMs);
+    for (let i = 0; i < steps.length; i++) {
       if (token !== animToken) return false;
-      counts[target] += 1;
-      paintPit(target, counts[target]);
-      BabeNotify.playSound("tick");
-      from = target;
-    }
+      const step = steps[i];
 
-    for (const cap of move.captures || []) {
-      if (token !== animToken) return false;
-      const house = cap.by === 0 ? HOUSES.P1_HOUSE : HOUSES.P2_HOUSE;
-      const sources = cap.opposite != null ? [cap.pit, cap.opposite] : [cap.pit];
-      sources.forEach((idx) => flashPit(idx));
-      await wait(220);
-      if (token !== animToken) return false;
-      for (const idx of sources) {
-        counts[house] += counts[idx];
-        counts[idx] = 0;
-        paintPit(idx, 0);
-        await flySeed(idx, house, 260);
+      if (step.t === "pickup") {
+        counts[step.pit] = 0;
+        paintPit(step.pit, 0);
+        cursor = step.pit;
+        if (i > 0) {
+          // a beat so you can see the pit being scooped up again
+          await wait(Math.min(200, stepMs * 2));
+        }
+      } else if (step.t === "drop") {
+        await flySeed(cursor, step.pit, stepMs);
+        if (token !== animToken) return false;
+        counts[step.pit] += 1;
+        paintPit(step.pit, counts[step.pit]);
+        if (dropIndex % soundEvery === 0) BabeNotify.playSound("tick");
+        dropIndex += 1;
+        cursor = step.pit;
+      } else if (step.t === "capture") {
+        const house = step.by === 0 ? HOUSES.P1_HOUSE : HOUSES.P2_HOUSE;
+        flashPit(step.pit);
+        await wait(170);
+        if (token !== animToken) return false;
+        counts[step.pit] = Math.max(0, counts[step.pit] - step.seeds);
+        counts[house] += step.seeds;
+        paintPit(step.pit, counts[step.pit]);
+        await flySeed(step.pit, house, 240);
         if (token !== animToken) return false;
         paintPit(house, counts[house]);
+        BabeNotify.playSound("success");
       }
-      BabeNotify.playSound("success");
     }
 
     return token === animToken;
