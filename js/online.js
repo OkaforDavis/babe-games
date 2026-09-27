@@ -121,27 +121,33 @@ const BabeOnline = (function () {
     return "Something went wrong connecting. Please try again.";
   }
 
-  // Tries the normal (direct-or-relay, whichever ICE finds first) path
-  // first. If that doesn't open a connection in time, tears everything
-  // down and retries once more with TURN relay forced — this is what
-  // rescues connections on restrictive mobile/carrier networks where
-  // direct and even "auto" relay negotiation can silently stall.
+  // The host just listens for one incoming connection on a fixed ID — there
+  // is no "retry with a different transport policy" for this side, because
+  // that would mean destroying and instantly recreating a peer with the
+  // SAME custom ID, and the signaling server doesn't always release an ID
+  // fast enough for that, which surfaces as a confusing "already taken"
+  // error. Forcing the *joiner's* ICE gathering to relay-only (below) is
+  // what actually rescues restrictive-NAT connections, since a relay
+  // candidate from either side can still pair with the other side's
+  // candidates. So the host just keeps listening with a generous, one-time
+  // fresh ID and lets the guest's retry logic do the work.
   function createRoom() {
-    return attemptAsHost(false);
+    teardownPeer(); // clear out any stale attempt before starting fresh
+    roomCode = genCode();
+    return attemptAsHost(0);
   }
 
-  function attemptAsHost(forceRelay) {
+  function attemptAsHost(regenerateCount) {
     attemptNumber += 1;
     const myAttempt = attemptNumber;
     return new Promise((resolve, reject) => {
       if (typeof Peer === "undefined") return reject(new Error("PeerJS not loaded"));
-      roomCode = roomCode || genCode();
       isHost = true;
       requestWakeLock();
-      peer = new Peer(ROOM_PREFIX + roomCode, { config: iceConfig(forceRelay) });
+      peer = new Peer(ROOM_PREFIX + roomCode, { config: iceConfig(false) });
 
       peer.on("open", () => {
-        emitState("waiting", { code: roomCode, retry: forceRelay });
+        emitState("waiting", { code: roomCode });
         resolve(roomCode);
       });
       peer.on("connection", (c) => {
@@ -150,6 +156,15 @@ const BabeOnline = (function () {
       });
       peer.on("error", (err) => {
         if (myAttempt !== attemptNumber) return;
+        // The signaling server can take a moment to release a previous ID —
+        // if we land on a genuine collision, just pick a new code silently
+        // instead of dead-ending the user on an "already taken" error.
+        if (err && err.type === "unavailable-id" && regenerateCount < 3) {
+          teardownPeer();
+          roomCode = genCode();
+          attemptAsHost(regenerateCount + 1).then(resolve, reject);
+          return;
+        }
         releaseWakeLock();
         emitState("error", friendlyPeerError(err));
         reject(err);
@@ -162,20 +177,13 @@ const BabeOnline = (function () {
       connectTimeout = setTimeout(() => {
         if (myAttempt !== attemptNumber) return;
         if (conn && conn.open) return;
-        if (!forceRelay) {
-          emitState("retrying");
-          teardownPeer();
-          attemptAsHost(true).catch(() => {});
-        } else {
-          releaseWakeLock();
-          emitState("timeout");
-          teardownPeer();
-        }
+        emitState("still-waiting");
       }, ATTEMPT_TIMEOUT_MS);
     });
   }
 
   function joinRoom(code) {
+    teardownPeer(); // clear out any stale attempt before starting fresh
     roomCode = code.trim().toUpperCase();
     return attemptAsGuest(false);
   }
@@ -342,7 +350,10 @@ const BabeOnlineUI = (function () {
       BabeOnline.disconnect();
       showIdle();
     });
-    overlay.querySelector("#online-retry-btn").addEventListener("click", showIdle);
+    overlay.querySelector("#online-retry-btn").addEventListener("click", () => {
+      BabeOnline.disconnect();
+      showIdle();
+    });
 
     overlay.querySelector("#online-copy-link-btn").addEventListener("click", () => {
       const code = BabeOnline.roomCode;
@@ -369,6 +380,9 @@ const BabeOnlineUI = (function () {
       } else if (state === "retrying") {
         const statusEl = document.getElementById("online-status-text");
         if (statusEl) statusEl.textContent = "Still working on it — trying a relay connection (this can take a bit longer on mobile data)…";
+      } else if (state === "still-waiting") {
+        const statusEl = document.getElementById("online-status-text");
+        if (statusEl) statusEl.textContent = "Still waiting for your partner… make sure they opened the code/link in a real browser (not WhatsApp/Instagram's in-app one) and their screen is on.";
       } else if (state === "timeout") {
         showError("Couldn't connect after two tries. Make sure you're both on a working internet connection (WiFi is usually more reliable than mobile data for this), that the room code is fresh, and that neither of you opened the link inside WhatsApp/Instagram's in-app browser.");
       } else if (state === "disconnected") {
