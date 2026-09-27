@@ -16,26 +16,34 @@
     gap: 3px;
     width: min(420px, 100%);
     aspect-ratio: 1 / 1;
-    margin: 20px auto;
+    margin: 16px auto;
     background: var(--border);
-    border-radius: 10px;
+    border-radius: 12px;
     overflow: hidden;
+    touch-action: manipulation;
   }
   .puzzle-tile {
     background-repeat: no-repeat;
     cursor: pointer;
     border: 2px solid transparent;
+    transition: border-color 0.12s ease, transform 0.12s ease;
   }
-  .puzzle-tile.selected { border-color: var(--accent); }
-  .image-choice-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+  .puzzle-tile.selected { border-color: var(--accent); transform: scale(0.94); }
+  .puzzle-tile.locked { border-color: rgba(53, 224, 161, 0.55); }
+  .image-choice-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
   .image-choice {
-    width: 70px; height: 70px; border-radius: 10px;
+    width: 66px; height: 66px; border-radius: 10px;
     border: 2px solid var(--border);
-    background-size: cover;
-    background-position: center;
+    background-size: cover; background-position: center;
     cursor: pointer;
   }
   .image-choice.chosen { border-color: var(--accent); }
+  .progress-track {
+    height: 8px; border-radius: 999px; background: #170e26;
+    overflow: hidden; margin-top: 6px;
+  }
+  .progress-fill { height: 100%; background: var(--accent-3); transition: width 0.25s ease; }
+  .peek { width: min(180px, 45%); border-radius: 10px; display: block; margin: 0 auto 10px; }
 </style>
 </head>
 <body>
@@ -52,20 +60,30 @@
   <div class="game-shell">
     <h2 style="margin-top:0;">&#129513; Photo Puzzle</h2>
 
-    <details class="rules" open>
+    <details class="rules">
       <summary>How to play</summary>
-      Pick a picture (or upload your own &mdash; it stays on your device,
-      nothing is uploaded anywhere), pick how many pieces, then tap two
-      tiles to swap them. Get every tile back to its right spot to solve it.
-      Fewer swaps and less time make a better score.
+      Tap two tiles to swap them until the picture is back together. Online,
+      you both get the exact same scrambled picture and it's a race &mdash;
+      first one finished wins.
     </details>
 
-    <!-- SETUP -->
+    <div id="online-bar" class="online-bar" style="display:none;"></div>
+
     <div id="setup-screen">
+      <div class="field">
+        <label for="p1-name">Your name</label>
+        <input type="text" id="p1-name" placeholder="Player 1" />
+      </div>
       <div class="field">
         <label>Choose a picture</label>
         <div class="image-choice-row" id="image-choice-row"></div>
-        <input type="file" id="upload-input" accept="image/*" />
+        <div id="upload-field">
+          <label for="upload-input" style="font-size:0.8rem;">…or use your own photo (stays on your device)</label>
+          <input type="file" id="upload-input" accept="image/*" />
+        </div>
+        <p class="waiting-note" id="upload-note" style="display:none;">
+          Online races use one of the built-in pictures so you both get exactly the same puzzle.
+        </p>
       </div>
       <div class="field">
         <label for="grid-size">Difficulty</label>
@@ -76,44 +94,27 @@
         </select>
       </div>
       <div class="btn-row">
-        <button class="btn" id="start-btn">Start Puzzle</button>
+        <button class="btn" id="start-local">Solo puzzle</button>
+        <button class="btn secondary" id="start-online">&#127760; Race a partner</button>
       </div>
     </div>
 
-    <!-- GAME -->
-    <div id="game-screen" style="display:none;">
-      <div class="scoreboard">
-        <div class="score-box">
-          <div class="name">Time</div>
-          <div class="val" id="time-display">00:00</div>
-        </div>
-        <div class="score-box">
-          <div class="name">Swaps</div>
-          <div class="val" id="moves-display">0</div>
-        </div>
-      </div>
+    <div id="play-screen" style="display:none;">
+      <div class="seat-row" id="seat-row"></div>
+      <img class="peek" id="peek-image" alt="the finished picture" />
+      <p class="waiting-note">Tap two tiles to swap them</p>
       <div class="puzzle-board" id="puzzle-board"></div>
       <div class="feedback" id="feedback"></div>
       <div class="btn-row">
-        <button class="btn secondary" id="give-up-btn">Give Up</button>
+        <button class="btn secondary" id="quit-btn">Give up</button>
       </div>
     </div>
 
-    <!-- END -->
     <div id="end-screen" style="display:none;">
-      <h3 style="text-align:center;">Solved! \u{1F389}</h3>
-      <div class="scoreboard">
-        <div class="score-box">
-          <div class="name">Time</div>
-          <div class="val" id="final-time">00:00</div>
-        </div>
-        <div class="score-box">
-          <div class="name">Swaps</div>
-          <div class="val" id="final-moves">0</div>
-        </div>
-      </div>
+      <h3 id="winner-line" style="text-align:center;"></h3>
+      <div class="seat-row" id="final-row"></div>
       <div class="btn-row">
-        <button class="btn" id="play-again">Play Again</button>
+        <button class="btn" id="rematch-btn">Play Again</button>
         <a class="btn secondary" href="../index.html">Back to games</a>
       </div>
     </div>
@@ -125,6 +126,11 @@
 <script src="../js/profiles.js"></script>
 <script src="../js/notify.js"></script>
 <script>BabeNotify.init("../");</script>
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="../js/online.js"></script>
+<script src="../js/rules/puzzle-rules.js"></script>
+<script src="../js/game.js"></script>
+<script src="../js/game-ui.js"></script>
 <script src="puzzle.js"></script>
 </body>
 </html>

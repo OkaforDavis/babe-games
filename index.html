@@ -25,11 +25,14 @@
 
   <section class="hero">
     <h1>Games we grew up on, <span class="accent">now in your browser</span></h1>
-    <p>Scramble, Name-Place-Animal-Thing, chain naming and more classic Nigerian household games — built for two people, one screen, and a bit of banter.</p>
+    <p>Ncho, scramble, name-place-animal-thing and more. Play on one screen together, or share a room code and play from anywhere.</p>
   </section>
 
   <div class="section-title">Play now <span class="pill">Ready</span></div>
   <div id="ready-grid" class="grid"></div>
+
+  <div class="section-title" id="results-title" style="display:none;">Recent best</div>
+  <div id="results-grid" class="grid"></div>
 
   <div class="section-title">Coming soon</div>
   <div id="soon-grid" class="grid"></div>
@@ -47,8 +50,8 @@
   BabeNotify.init("./");
 
   function cardHtml(game) {
-    const tag = game.status === "ready"
-      ? '<span class="tag ready">Play</span>'
+    const tags = game.status === "ready"
+      ? '<span class="tag ready">Play</span>' + (game.online ? '<span class="tag online">&#127760; Online too</span>' : "")
       : '<span class="tag soon">Coming soon</span>';
     const el = document.createElement(game.status === "ready" ? "a" : "div");
     if (game.status === "ready") el.href = game.href;
@@ -57,7 +60,7 @@
       <div class="emoji">${game.emoji}</div>
       <h3>${game.title}</h3>
       <p>${game.desc}</p>
-      ${tag}
+      <div class="tag-row">${tags}</div>
     `;
     return el;
   }
@@ -68,6 +71,30 @@
     const target = game.status === "ready" ? readyGrid : soonGrid;
     target.appendChild(cardHtml(game));
   });
+
+  const resultsGrid = document.getElementById("results-grid");
+  const resultsTitle = document.getElementById("results-title");
+  let anyResults = false;
+
+  GAME_CATALOG.filter((g) => g.status === "ready").forEach((game) => {
+    const scores = getHighScores(game.id).slice(0, 3);
+    if (!scores.length) return;
+    anyResults = true;
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `
+      <div class="emoji">${game.emoji}</div>
+      <h3>${game.title}</h3>
+      ${scores.map((s) => `
+        <p style="margin:0;font-size:0.85rem;">
+          <strong style="color:var(--accent-2)">${s.score}</strong>
+          &middot; ${escapeHtml(s.players || "")}
+        </p>`).join("")}
+    `;
+    resultsGrid.appendChild(card);
+  });
+
+  resultsTitle.style.display = anyResults ? "flex" : "none";
 </script>
 </body>
 </html>

@@ -1,197 +1,209 @@
 (function () {
-  const setupScreen = document.getElementById("setup-screen");
-  const gameScreen = document.getElementById("game-screen");
-  const endScreen = document.getElementById("end-screen");
-
-  const playersList = document.getElementById("players-list");
-  const addPlayerBtn = document.getElementById("add-player");
-  const categorySelect = document.getElementById("category");
-  const timeSelect = document.getElementById("time");
-  const startBtn = document.getElementById("start-btn");
-
   const statusLabel = document.getElementById("status-label");
-  const turnLabel = document.getElementById("turn-label");
+  const turnBanner = document.getElementById("turn-banner");
   const timerDisplay = document.getElementById("timer-display");
   const requirementLabel = document.getElementById("requirement-label");
   const wordInput = document.getElementById("word-input");
   const feedback = document.getElementById("feedback");
   const submitBtn = document.getElementById("submit-word");
   const chainLog = document.getElementById("chain-log");
-
   const winnerLine = document.getElementById("winner-line");
   const chainLength = document.getElementById("chain-length");
-  const playAgainBtn = document.getElementById("play-again");
+  const rematchBtn = document.getElementById("rematch-btn");
 
-  let state = null;
+  const p1Name = document.getElementById("p1-name");
+  const playersList = document.getElementById("players-list");
+  const addPlayerBtn = document.getElementById("add-player");
+  const localPlayersField = document.getElementById("local-players-field");
+  const categorySelect = document.getElementById("category");
+  const turnTimeSelect = document.getElementById("turn-time");
 
-  function renderPlayersListPreserving(count) {
+  let renderedLogLength = -1;
+  let lastTurnKey = "";
+
+  document.addEventListener("DOMContentLoaded", () => {
+    const active = BabeProfiles.getActive();
+    if (active && !p1Name.value) p1Name.value = active.name;
+  });
+
+  function renderExtraPlayers(count) {
     const existing = [...playersList.querySelectorAll("[data-player-input]")].map((i) => i.value);
     playersList.dataset.count = count;
     playersList.innerHTML = "";
     for (let i = 0; i < count; i++) {
       const row = document.createElement("div");
       row.className = "field";
-      row.innerHTML = `<input type="text" placeholder="Player ${i + 1}" data-player-input value="${existing[i] || ""}" />`;
+      row.innerHTML = `<input type="text" placeholder="Player ${i + 2}" data-player-input value="${escapeHtml(existing[i] || "")}" />`;
       playersList.appendChild(row);
     }
   }
-  renderPlayersListPreserving(2);
-
-  document.addEventListener("DOMContentLoaded", () => {
-    const active = BabeProfiles.getActive();
-    const first = playersList.querySelector("[data-player-input]");
-    if (active && first && !first.value) first.value = active.name;
-  });
+  renderExtraPlayers(1);
 
   addPlayerBtn.addEventListener("click", () => {
     const count = parseInt(playersList.dataset.count, 10) + 1;
-    if (count > 6) return;
-    renderPlayersListPreserving(count);
+    if (count > 5) return;
+    renderExtraPlayers(count);
   });
 
-  function startGame() {
-    const names = [...playersList.querySelectorAll("[data-player-input]")]
-      .map((el, i) => el.value.trim() || `Player ${i + 1}`);
-    state = {
-      players: names,
-      active: names.map(() => true),
-      category: categorySelect.value,
-      timePerTurn: parseInt(timeSelect.value, 10),
-      turnIndex: 0,
-      usedWords: new Set(),
-      lastWord: null,
-      log: [],
-      timer: null,
-    };
-    setupScreen.style.display = "none";
-    gameScreen.style.display = "block";
-    endScreen.style.display = "none";
-    chainLog.innerHTML = "";
-    startTurn();
+  function localNames() {
+    const extras = [...playersList.querySelectorAll("[data-player-input]")]
+      .map((el, i) => el.value.trim() || `Player ${i + 2}`);
+    return [p1Name.value.trim() || "Player 1", ...extras];
   }
 
-  function nextActiveIndex(from) {
-    const n = state.players.length;
-    for (let step = 0; step < n; step++) {
-      const idx = (from + step) % n;
-      if (state.active[idx]) return idx;
-    }
-    return -1;
-  }
+  function render(state, view) {
+    const myTurn = !view.isOnline || state.turn === view.mySlot;
 
-  function activeCount() {
-    return state.active.filter(Boolean).length;
-  }
-
-  function startTurn() {
-    if (activeCount() <= 1) return endGame();
-
-    const idx = nextActiveIndex(state.turnIndex);
-    state.turnIndex = idx;
-
-    const playerName = state.players[idx];
     statusLabel.textContent = state.category === "mixed"
       ? "Category: anything goes"
-      : `Category: ${CATEGORY_LABELS[state.category]}`;
-    turnLabel.textContent = `${playerName}'s turn`;
+      : `Category: ${CATEGORY_LABELS[state.category] || state.category}`;
+
+    const alive = state.names.filter((_, i) => state.alive[i]).length;
+    turnBanner.textContent = state.over
+      ? ""
+      : view.isOnline
+      ? myTurn ? "Your turn!" : `${state.names[state.turn]} is thinking…`
+      : `${state.names[state.turn]}'s turn` + (state.names.length > 2 ? ` · ${alive} still in` : "");
+    turnBanner.className = "turn-banner" + (myTurn ? " mine" : "");
+
+    timerDisplay.textContent = formatSeconds(state.secondsLeft);
+    setTimerClass(timerDisplay, state.secondsLeft, state.turnTime);
+    if (state.secondsLeft === 5 && myTurn && !state.over) BabeNotify.playSound("tick");
 
     if (state.lastWord) {
-      const lastLetter = state.lastWord[state.lastWord.length - 1].toUpperCase();
-      requirementLabel.innerHTML = `Must start with <strong>${lastLetter}</strong>`;
+      const letter = state.lastWord[state.lastWord.length - 1].toUpperCase();
+      requirementLabel.innerHTML = `Must start with <strong style="color:var(--accent-2)">${letter}</strong>`;
     } else {
-      requirementLabel.textContent = "You're first — name anything!";
+      requirementLabel.textContent = "First word — name anything!";
     }
 
-    wordInput.value = "";
-    wordInput.disabled = false;
-    submitBtn.disabled = false;
-    feedback.textContent = "";
-    feedback.className = "feedback";
-    BabeNotify.notify(`${playerName}'s turn!`, requirementLabel.textContent, { sound: "turn", basePath: "../" });
+    const canType = myTurn && !state.over;
+    wordInput.disabled = !canType;
+    submitBtn.disabled = !canType;
+    wordInput.placeholder = canType ? "Type your word..." : "Wait for your turn…";
 
-    state.timer = new CountdownTimer(
-      state.timePerTurn,
-      (secondsLeft) => {
-        timerDisplay.textContent = formatSeconds(secondsLeft);
-        setTimerClass(timerDisplay, secondsLeft, state.timePerTurn);
-        if (secondsLeft === 5) BabeNotify.playSound("tick");
-      },
-      () => eliminate(idx, "ran out of time")
-    );
-    state.timer.start();
-    wordInput.focus();
-  }
-
-  function addLogEntry(who, text) {
-    const li = document.createElement("li");
-    li.innerHTML = `<span class="who">${who}:</span>${text}`;
-    chainLog.appendChild(li);
-    chainLog.scrollTop = chainLog.scrollHeight;
-  }
-
-  function eliminate(idx, reason) {
-    if (state.timer) state.timer.stop();
-    state.active[idx] = false;
-    addLogEntry(state.players[idx], `❌ eliminated — ${reason}`);
-    BabeNotify.playSound("fail");
-    state.turnIndex = idx + 1;
-    startTurn();
-  }
-
-  function submitWord() {
-    if (!state.timer) return;
-    const raw = wordInput.value.trim();
-    if (!raw) return;
-    const word = raw.toLowerCase();
-    const idx = state.turnIndex;
-
-    if (state.usedWords.has(word)) {
-      feedback.textContent = "Already used! Try another word.";
-      feedback.className = "feedback bad";
-      return;
-    }
-    if (state.lastWord) {
-      const requiredLetter = state.lastWord[state.lastWord.length - 1];
-      if (word[0] !== requiredLetter) {
-        feedback.textContent = `Must start with "${requiredLetter.toUpperCase()}"`;
-        feedback.className = "feedback bad";
-        return;
+    const turnKey = `${state.rev}:${state.turn}`;
+    if (turnKey !== lastTurnKey) {
+      lastTurnKey = turnKey;
+      if (canType) {
+        wordInput.value = "";
+        wordInput.focus();
+        if (view.isOnline) {
+          BabeNotify.notify("Your turn!", requirementLabel.textContent, { sound: "turn", basePath: "../" });
+        } else {
+          BabeNotify.playSound("turn");
+        }
       }
     }
 
-    state.timer.stop();
-    state.usedWords.add(word);
-    state.lastWord = word;
-    state.log.push({ who: state.players[idx], word });
-    addLogEntry(state.players[idx], raw);
+    if (state.rejected && myTurn) {
+      feedback.textContent = state.rejected.reason;
+      feedback.className = "feedback bad";
+    } else if (state.message) {
+      feedback.textContent = state.message;
+      feedback.className = "feedback bad";
+    } else {
+      feedback.textContent = "";
+      feedback.className = "feedback";
+    }
 
-    state.turnIndex = idx + 1;
-    startTurn();
+    if (state.log.length !== renderedLogLength) {
+      renderedLogLength = state.log.length;
+      chainLog.innerHTML = "";
+      state.log.forEach((entry) => {
+        const li = document.createElement("li");
+        const mark = entry.kind === "out" ? "❌ " : "";
+        li.innerHTML = `<span class="who">${escapeHtml(entry.who)}:</span>${mark}${escapeHtml(entry.text)}`;
+        chainLog.appendChild(li);
+      });
+      chainLog.scrollTop = chainLog.scrollHeight;
+      const last = state.log[state.log.length - 1];
+      if (last && last.kind === "out") BabeNotify.playSound("fail");
+    }
   }
 
-  function endGame() {
-    gameScreen.style.display = "none";
-    endScreen.style.display = "block";
-    const winnerIdx = state.active.findIndex(Boolean);
-    winnerLine.textContent = winnerIdx >= 0
-      ? `${state.players[winnerIdx]} wins! \u{1F3C6}`
-      : "Game over!";
-    chainLength.textContent = `Chain survived ${state.log.length} word${state.log.length === 1 ? "" : "s"}.`;
-    BabeNotify.notify("Game over!", winnerLine.textContent, { sound: "win", basePath: "../" });
-
-    pushHighScore("chain", {
-      players: state.players.join(", "),
-      score: state.log.length,
-    });
+  function submitWord() {
+    const text = wordInput.value.trim();
+    if (!text) return;
+    const state = game.state;
+    if (!state) return;
+    game.dispatch({ type: "word", text }, game.view.isOnline ? undefined : state.turn);
+    wordInput.value = "";
   }
+
+  const game = BabeGame.create({
+    rules: ChainRules,
+    render,
+    onMatchStart(view) {
+      renderedLogLength = -1;
+      lastTurnKey = "";
+      chainLog.innerHTML = "";
+      BabeGameUI.showScreen("play-screen");
+      BabeGameUI.setBar(
+        view.isOnline ? `Playing <strong>${escapeHtml(view.peerName || "your partner")}</strong>` : "",
+        "ok"
+      );
+    },
+    onOver(state, view) {
+      const words = state.log.filter((l) => l.kind === "word").length;
+      winnerLine.textContent = state.winner < 0
+        ? "Nobody left standing!"
+        : view.isOnline
+        ? state.winner === view.mySlot ? "You win! \u{1F3C6}" : `${state.names[state.winner]} wins!`
+        : `${state.names[state.winner]} wins! \u{1F3C6}`;
+      chainLength.textContent = `The chain survived ${words} word${words === 1 ? "" : "s"}.`;
+      BabeNotify.notify("Game over!", winnerLine.textContent, { sound: "win", basePath: "../" });
+      pushHighScore("chain", { players: state.names.join(", "), score: words });
+      rematchBtn.style.display = view.isOnline && !view.isHost ? "none" : "inline-block";
+      BabeGameUI.showScreen("end-screen");
+      if (view.isOnline) {
+        BabeGameUI.setBar(
+          view.isHost ? "Tap Play Again to start another round." : "Waiting for the host to start another round…",
+          "ok"
+        );
+      }
+    },
+    onConnected() {
+      localPlayersField.style.display = "none";
+      ui.handleConnected();
+    },
+    onPeerReady() { ui.handlePeerReady(); },
+    onPeerLost() {
+      ui.handlePeerLost();
+      BabeGameUI.showScreen("setup-screen");
+      localPlayersField.style.display = "block";
+    },
+  });
+
+  function config() {
+    return {
+      category: categorySelect.value,
+      turnTime: parseInt(turnTimeSelect.value, 10),
+    };
+  }
+
+  const ui = BabeGameUI.bind({
+    game,
+    getConfig: config,
+    getLocalNames: localNames,
+    onStarted() {
+      renderedLogLength = -1;
+      lastTurnKey = "";
+      chainLog.innerHTML = "";
+    },
+  });
 
   submitBtn.addEventListener("click", submitWord);
   wordInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") submitWord();
   });
-  startBtn.addEventListener("click", startGame);
-  playAgainBtn.addEventListener("click", () => {
-    endScreen.style.display = "none";
-    setupScreen.style.display = "block";
+
+  rematchBtn.addEventListener("click", () => {
+    renderedLogLength = -1;
+    lastTurnKey = "";
+    chainLog.innerHTML = "";
+    if (game.mode === "online") game.hostStart(config());
+    else game.startLocal({ ...config(), names: localNames() });
+    BabeGameUI.showScreen("play-screen");
   });
 })();

@@ -44,57 +44,6 @@ function pickRandom(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-function scrambleWord(word) {
-  const letters = word.split("");
-  let attempt = letters.join("");
-  let tries = 0;
-  // avoid an unscrambled result when possible
-  while (attempt.toLowerCase() === word.toLowerCase() && tries < 10) {
-    attempt = shuffleArray(letters).join("");
-    tries++;
-  }
-  return attempt;
-}
-
-/**
- * Simple countdown timer.
- * onTick(secondsLeft), onEnd() called once when it hits zero.
- */
-class CountdownTimer {
-  constructor(totalSeconds, onTick, onEnd) {
-    this.total = totalSeconds;
-    this.secondsLeft = totalSeconds;
-    this.onTick = onTick;
-    this.onEnd = onEnd;
-    this.handle = null;
-  }
-  start() {
-    this.stop();
-    this.onTick(this.secondsLeft);
-    this.handle = setInterval(() => {
-      this.secondsLeft -= 1;
-      if (this.secondsLeft <= 0) {
-        this.secondsLeft = 0;
-        this.onTick(this.secondsLeft);
-        this.stop();
-        this.onEnd();
-      } else {
-        this.onTick(this.secondsLeft);
-      }
-    }, 1000);
-  }
-  stop() {
-    if (this.handle) {
-      clearInterval(this.handle);
-      this.handle = null;
-    }
-  }
-  addSeconds(n) {
-    this.secondsLeft = Math.max(0, this.secondsLeft + n);
-    this.onTick(this.secondsLeft);
-  }
-}
-
 function formatSeconds(s) {
   const m = Math.floor(s / 60).toString().padStart(2, "0");
   const sec = (s % 60).toString().padStart(2, "0");
@@ -102,7 +51,15 @@ function formatSeconds(s) {
 }
 
 function setTimerClass(el, secondsLeft, total) {
+  if (!el) return;
   el.classList.remove("warn", "critical");
+  if (!total) return;
   if (secondsLeft <= total * 0.15) el.classList.add("critical");
   else if (secondsLeft <= total * 0.4) el.classList.add("warn");
+}
+
+function escapeHtml(text) {
+  return String(text).replace(/[&<>"']/g, (ch) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[ch]));
 }

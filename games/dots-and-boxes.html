@@ -25,21 +25,22 @@
   <div class="game-shell">
     <h2 style="margin-top:0;">&#128209; Dots and Boxes</h2>
 
-    <details class="rules" open>
+    <details class="rules">
       <summary>How to play</summary>
-      The classic paper-and-pen game. Take turns drawing one line between two
-      dots. Complete the fourth side of a box and you claim it (and get to go
-      again). Whoever claims the most boxes when the grid is full wins.
+      Take turns drawing one line between two dots. Close the fourth side of
+      a box and it's yours &mdash; and you go again. When the grid is full,
+      whoever owns the most boxes wins.
     </details>
 
-    <!-- SETUP -->
+    <div id="online-bar" class="online-bar" style="display:none;"></div>
+
     <div id="setup-screen">
       <div class="field">
-        <label for="p1-name">Player 1 name</label>
+        <label for="p1-name">Your name</label>
         <input type="text" id="p1-name" placeholder="Player 1" />
       </div>
-      <div class="field">
-        <label for="p2-name">Player 2 name</label>
+      <div class="field" id="p2-field">
+        <label for="p2-name">Opponent name (same device)</label>
         <input type="text" id="p2-name" placeholder="Player 2" />
       </div>
       <div class="field">
@@ -53,52 +54,53 @@
       <div class="field">
         <label for="turn-time">Time per move</label>
         <select id="turn-time">
+          <option value="0" selected>No timer</option>
           <option value="15">15 seconds</option>
-          <option value="20" selected>20 seconds</option>
+          <option value="20">20 seconds</option>
           <option value="30">30 seconds</option>
-          <option value="0">No timer</option>
         </select>
       </div>
       <div class="btn-row">
-        <button class="btn" id="start-btn">Start Game (same device)</button>
+        <button class="btn" id="start-local">Start (same device)</button>
+        <button class="btn secondary" id="start-online">&#127760; Play Online</button>
       </div>
     </div>
 
-    <!-- GAME -->
-    <div id="game-screen" style="display:none;">
-      <div class="scoreboard">
-        <div class="score-box" id="score-p1">
-          <div class="name"></div>
-          <div class="val">0</div>
+    <div id="play-screen" style="display:none;">
+      <div class="seat-row">
+        <div class="seat" id="seat-0">
+          <div class="seat-name"></div>
+          <div class="seat-score">0</div>
+          <div class="seat-sub">boxes</div>
         </div>
-        <div class="score-box" id="score-p2">
-          <div class="name"></div>
-          <div class="val">0</div>
+        <div class="seat" id="seat-1">
+          <div class="seat-name"></div>
+          <div class="seat-score">0</div>
+          <div class="seat-sub">boxes</div>
         </div>
       </div>
-      <p style="text-align:center;" id="turn-label"></p>
+      <div class="turn-banner" id="turn-banner"></div>
       <div class="timer" id="timer-display" style="display:none;">00:00</div>
-      <div style="display:flex; justify-content:center;">
-        <svg id="board-svg" style="max-width:100%; height:auto;"></svg>
-      </div>
+      <div class="dab-stage" id="board-stage"></div>
       <div class="feedback" id="feedback"></div>
     </div>
 
-    <!-- END -->
     <div id="end-screen" style="display:none;">
       <h3 id="winner-line" style="text-align:center;"></h3>
-      <div class="scoreboard">
-        <div class="score-box" id="final-p1">
-          <div class="name"></div>
-          <div class="val">0</div>
+      <div class="seat-row">
+        <div class="seat" id="final-0">
+          <div class="seat-name"></div>
+          <div class="seat-score">0</div>
+          <div class="seat-sub">boxes</div>
         </div>
-        <div class="score-box" id="final-p2">
-          <div class="name"></div>
-          <div class="val">0</div>
+        <div class="seat" id="final-1">
+          <div class="seat-name"></div>
+          <div class="seat-score">0</div>
+          <div class="seat-sub">boxes</div>
         </div>
       </div>
       <div class="btn-row">
-        <button class="btn" id="play-again">Play Again</button>
+        <button class="btn" id="rematch-btn">Play Again</button>
         <a class="btn secondary" href="../index.html">Back to games</a>
       </div>
     </div>
@@ -110,6 +112,11 @@
 <script src="../js/profiles.js"></script>
 <script src="../js/notify.js"></script>
 <script>BabeNotify.init("../");</script>
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="../js/online.js"></script>
+<script src="../js/rules/dots-rules.js"></script>
+<script src="../js/game.js"></script>
+<script src="../js/game-ui.js"></script>
 <script src="dots-and-boxes.js"></script>
 </body>
 </html>

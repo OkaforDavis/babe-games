@@ -1,289 +1,217 @@
 (function () {
-  const setupScreen = document.getElementById("setup-screen");
-  const gameScreen = document.getElementById("game-screen");
-  const endScreen = document.getElementById("end-screen");
+  const NS = "http://www.w3.org/2000/svg";
+  const SPACING = 78;
+  const PAD = 30;
+  const COLORS = ["#ff7a3d", "#4db5ff"];
 
-  const p1NameInput = document.getElementById("p1-name");
-  const p2NameInput = document.getElementById("p2-name");
+  const stage = document.getElementById("board-stage");
+  const turnBanner = document.getElementById("turn-banner");
+  const timerDisplay = document.getElementById("timer-display");
+  const feedback = document.getElementById("feedback");
+  const winnerLine = document.getElementById("winner-line");
+  const rematchBtn = document.getElementById("rematch-btn");
+  const p1Name = document.getElementById("p1-name");
+  const p2Name = document.getElementById("p2-name");
+  const p2Field = document.getElementById("p2-field");
   const gridSizeSelect = document.getElementById("grid-size");
   const turnTimeSelect = document.getElementById("turn-time");
-  const startBtn = document.getElementById("start-btn");
 
-  const scoreP1 = document.getElementById("score-p1");
-  const scoreP2 = document.getElementById("score-p2");
-  const turnLabel = document.getElementById("turn-label");
-  const timerDisplay = document.getElementById("timer-display");
-  const boardSvg = document.getElementById("board-svg");
-  const feedback = document.getElementById("feedback");
-
-  const winnerLine = document.getElementById("winner-line");
-  const finalP1 = document.getElementById("final-p1");
-  const finalP2 = document.getElementById("final-p2");
-  const playAgainBtn = document.getElementById("play-again");
-
-  const SPACING = 64;
-  const PAD = 24;
-  const PLAYER_COLOR = { 1: "var(--accent)", 2: "var(--accent-4)" };
-  const NS = "http://www.w3.org/2000/svg";
-
-  let state = null;
+  let lastBoardRev = -1;
 
   document.addEventListener("DOMContentLoaded", () => {
     const active = BabeProfiles.getActive();
-    if (active && !p1NameInput.value) p1NameInput.value = active.name;
+    if (active && !p1Name.value) p1Name.value = active.name;
   });
 
-  function startGame() {
-    const n = parseInt(gridSizeSelect.value, 10);
-    const turnTime = parseInt(turnTimeSelect.value, 10);
-    const p1 = p1NameInput.value.trim() || "Player 1";
-    const p2 = p2NameInput.value.trim() || "Player 2";
+  function svgEl(tag, attrs) {
+    const node = document.createElementNS(NS, tag);
+    Object.entries(attrs || {}).forEach(([k, v]) => node.setAttribute(k, v));
+    return node;
+  }
 
-    state = {
-      n,
-      turnTime,
-      p1, p2,
-      current: 1,
-      scores: { 1: 0, 2: 0 },
-      hEdges: Array.from({ length: n + 1 }, () => Array(n).fill(false)),
-      vEdges: Array.from({ length: n }, () => Array(n + 1).fill(false)),
-      boxOwner: Array.from({ length: n }, () => Array(n).fill(null)),
-      boxesClaimed: 0,
-      timer: null,
+  function render(state, view) {
+    [0, 1].forEach((slot) => {
+      const seat = document.getElementById(`seat-${slot}`);
+      seat.querySelector(".seat-name").textContent = state.names[slot];
+      seat.querySelector(".seat-score").textContent = state.scores[slot];
+      seat.querySelector(".seat-name").style.color = COLORS[slot];
+      seat.classList.toggle("active", !state.over && state.turn === slot);
+      seat.classList.toggle("you", view.isOnline && slot === view.mySlot);
+    });
+
+    const mine = !view.isOnline || state.turn === view.mySlot;
+    turnBanner.textContent = state.over
+      ? ""
+      : view.isOnline
+      ? mine ? "Your turn — draw a line" : `Waiting for ${state.names[state.turn]}…`
+      : `${state.names[state.turn]}'s turn`;
+    turnBanner.className = "turn-banner" + (mine ? " mine" : "");
+
+    if (state.turnTime > 0 && !state.over) {
+      timerDisplay.style.display = "block";
+      timerDisplay.textContent = formatSeconds(state.secondsLeft);
+      setTimerClass(timerDisplay, state.secondsLeft, state.turnTime);
+      if (state.secondsLeft === 5 && mine) BabeNotify.playSound("tick");
+    } else {
+      timerDisplay.style.display = "none";
+    }
+
+    if (state.rev !== lastBoardRev) {
+      buildBoard(state, view);
+      lastBoardRev = state.rev;
+      if (state.lastMove && state.lastMove.gained && state.lastMove.gained.length) {
+        BabeNotify.playSound("success");
+      }
+    }
+
+    feedback.textContent = state.message || "";
+    feedback.className = "feedback" + (state.message ? " ok" : "");
+  }
+
+  function buildBoard(state, view) {
+    const n = state.n;
+    const size = n * SPACING + PAD * 2;
+    const svg = svgEl("svg", { viewBox: `0 0 ${size} ${size}`, xmlns: NS });
+    const canAct = !state.over && (!view.isOnline || state.turn === view.mySlot);
+
+    const pt = (row, col) => [PAD + col * SPACING, PAD + row * SPACING];
+
+    // claimed boxes
+    for (let r = 0; r < n; r++) {
+      for (let c = 0; c < n; c++) {
+        const owner = state.owner[r][c];
+        if (owner === -1) continue;
+        const [x, y] = pt(r, c);
+        svg.appendChild(svgEl("rect", {
+          x: x + 4, y: y + 4, width: SPACING - 8, height: SPACING - 8, rx: 8,
+          fill: COLORS[owner], opacity: 0.28,
+        }));
+        const initial = svgEl("text", {
+          x: x + SPACING / 2, y: y + SPACING / 2,
+          "text-anchor": "middle", "dominant-baseline": "central",
+          "font-size": 22, "font-weight": 800, fill: COLORS[owner], opacity: 0.9,
+        });
+        initial.textContent = (state.names[owner] || "?").trim().charAt(0).toUpperCase();
+        svg.appendChild(initial);
+      }
+    }
+
+    const addEdge = (o, r, c, x1, y1, x2, y2) => {
+      const owner = o === "h" ? state.h[r][c] : state.v[r][c];
+      const taken = owner !== -1;
+      svg.appendChild(svgEl("line", {
+        x1, y1, x2, y2,
+        stroke: taken ? COLORS[owner] : "#3a2650",
+        "stroke-width": taken ? 6 : 4,
+        "stroke-linecap": "round",
+      }));
+      if (taken || !canAct) return;
+      const hit = svgEl("line", {
+        x1, y1, x2, y2,
+        stroke: "transparent", "stroke-width": 22, class: "edge-hit",
+      });
+      hit.addEventListener("click", () => {
+        game.dispatch({ type: "claim", o, r, c }, view.isOnline ? undefined : state.turn);
+      });
+      svg.appendChild(hit);
     };
 
-    scoreP1.querySelector(".name").textContent = p1;
-    scoreP2.querySelector(".name").textContent = p2;
-    updateScoreboard();
-
-    setupScreen.style.display = "none";
-    gameScreen.style.display = "block";
-    endScreen.style.display = "none";
-    feedback.textContent = "";
-    feedback.className = "feedback";
-
-    buildBoard();
-    updateTurnUI();
-    armTurnTimer();
-  }
-
-  function updateScoreboard() {
-    scoreP1.querySelector(".val").textContent = state.scores[1];
-    scoreP2.querySelector(".val").textContent = state.scores[2];
-  }
-
-  function updateTurnUI() {
-    const name = state.current === 1 ? state.p1 : state.p2;
-    turnLabel.innerHTML = `<strong style="color:${PLAYER_COLOR[state.current]}">${name}</strong>'s turn`;
-    scoreP1.classList.toggle("active", state.current === 1);
-    scoreP2.classList.toggle("active", state.current === 2);
-  }
-
-  function armTurnTimer() {
-    if (state.timer) state.timer.stop();
-    if (!state.turnTime) {
-      timerDisplay.style.display = "none";
-      return;
-    }
-    timerDisplay.style.display = "block";
-    const name = state.current === 1 ? state.p1 : state.p2;
-    BabeNotify.notify(`${name}'s turn!`, "Draw a line before time runs out.", { sound: "turn", basePath: "../" });
-    state.timer = new CountdownTimer(
-      state.turnTime,
-      (secondsLeft) => {
-        timerDisplay.textContent = formatSeconds(secondsLeft);
-        setTimerClass(timerDisplay, secondsLeft, state.turnTime);
-        if (secondsLeft === 5) BabeNotify.playSound("tick");
-      },
-      () => {
-        feedback.textContent = `${name} ran out of time — turn passes.`;
-        feedback.className = "feedback bad";
-        BabeNotify.playSound("fail");
-        switchTurn();
-      }
-    );
-    state.timer.start();
-  }
-
-  function switchTurn() {
-    state.current = state.current === 1 ? 2 : 1;
-    updateTurnUI();
-    armTurnTimer();
-  }
-
-  function buildBoard() {
-    const n = state.n;
-    const width = n * SPACING + PAD * 2;
-    const height = n * SPACING + PAD * 2;
-    boardSvg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-    boardSvg.setAttribute("width", width);
-    boardSvg.setAttribute("height", height);
-    boardSvg.innerHTML = "";
-
-    function pt(row, col) {
-      return [PAD + col * SPACING, PAD + row * SPACING];
-    }
-
-    // horizontal edges
     for (let r = 0; r <= n; r++) {
       for (let c = 0; c < n; c++) {
         const [x1, y1] = pt(r, c);
         const [x2] = pt(r, c + 1);
-        addEdgeLine(x1, y1, x2, y1, () => claimHEdge(r, c));
+        addEdge("h", r, c, x1, y1, x2, y1);
       }
     }
-    // vertical edges
     for (let r = 0; r < n; r++) {
       for (let c = 0; c <= n; c++) {
         const [x1, y1] = pt(r, c);
         const [, y2] = pt(r + 1, c);
-        addEdgeLine(x1, y1, x1, y2, () => claimVEdge(r, c));
+        addEdge("v", r, c, x1, y1, x1, y2);
       }
     }
-    // box fills (drawn first would be under lines, but we append after so
-    // insert them before edges by rebuilding order: boxes first, then edges,
-    // then dots on top)
-    const boxLayer = document.createElementNS(NS, "g");
-    boxLayer.id = "box-layer";
-    boardSvg.insertBefore(boxLayer, boardSvg.firstChild);
 
-    // dots
     for (let r = 0; r <= n; r++) {
       for (let c = 0; c <= n; c++) {
         const [x, y] = pt(r, c);
-        const dot = document.createElementNS(NS, "circle");
-        dot.setAttribute("cx", x);
-        dot.setAttribute("cy", y);
-        dot.setAttribute("r", 4);
-        dot.setAttribute("fill", "#f5f0ff");
-        boardSvg.appendChild(dot);
+        svg.appendChild(svgEl("circle", { cx: x, cy: y, r: 5, fill: "#f5f0ff" }));
       }
     }
 
-    redrawBoxes();
+    stage.innerHTML = "";
+    stage.appendChild(svg);
   }
 
-  function addEdgeLine(x1, y1, x2, y2, onClaim) {
-    const hit = document.createElementNS(NS, "line");
-    hit.setAttribute("x1", x1);
-    hit.setAttribute("y1", y1);
-    hit.setAttribute("x2", x2);
-    hit.setAttribute("y2", y2);
-    hit.setAttribute("stroke", "transparent");
-    hit.setAttribute("stroke-width", 16);
-    hit.style.cursor = "pointer";
-    hit.dataset.claimed = "false";
-
-    const visible = document.createElementNS(NS, "line");
-    visible.setAttribute("x1", x1);
-    visible.setAttribute("y1", y1);
-    visible.setAttribute("x2", x2);
-    visible.setAttribute("y2", y2);
-    visible.setAttribute("stroke", "#3a2650");
-    visible.setAttribute("stroke-width", 4);
-    visible.setAttribute("stroke-linecap", "round");
-
-    hit.addEventListener("click", () => {
-      if (hit.dataset.claimed === "true") return;
-      const completed = onClaim();
-      hit.dataset.claimed = "true";
-      visible.setAttribute("stroke", PLAYER_COLOR[state.current]);
-      redrawBoxes();
-      if (checkGameEnd()) return;
-      if (!completed) switchTurn();
-      else armTurnTimer();
-    });
-
-    boardSvg.appendChild(visible);
-    boardSvg.appendChild(hit);
-  }
-
-  function claimHEdge(r, c) {
-    state.hEdges[r][c] = true;
-    let completedAny = false;
-    if (r > 0 && tryClaimBox(r - 1, c)) completedAny = true;
-    if (r < state.n && tryClaimBox(r, c)) completedAny = true;
-    return completedAny;
-  }
-
-  function claimVEdge(r, c) {
-    state.vEdges[r][c] = true;
-    let completedAny = false;
-    if (c > 0 && tryClaimBox(r, c - 1)) completedAny = true;
-    if (c < state.n && tryClaimBox(r, c)) completedAny = true;
-    return completedAny;
-  }
-
-  function boxComplete(r, c) {
-    return state.hEdges[r][c] && state.hEdges[r + 1][c] && state.vEdges[r][c] && state.vEdges[r][c + 1];
-  }
-
-  function tryClaimBox(r, c) {
-    if (state.boxOwner[r][c] !== null) return false;
-    if (!boxComplete(r, c)) return false;
-    state.boxOwner[r][c] = state.current;
-    state.scores[state.current] += 1;
-    state.boxesClaimed += 1;
-    updateScoreboard();
-    BabeNotify.playSound("success");
-    return true;
-  }
-
-  function redrawBoxes() {
-    const layer = document.getElementById("box-layer");
-    layer.innerHTML = "";
-    for (let r = 0; r < state.n; r++) {
-      for (let c = 0; c < state.n; c++) {
-        const owner = state.boxOwner[r][c];
-        if (!owner) continue;
-        const x = PAD + c * SPACING;
-        const y = PAD + r * SPACING;
-        const rect = document.createElementNS(NS, "rect");
-        rect.setAttribute("x", x + 3);
-        rect.setAttribute("y", y + 3);
-        rect.setAttribute("width", SPACING - 6);
-        rect.setAttribute("height", SPACING - 6);
-        rect.setAttribute("fill", PLAYER_COLOR[owner]);
-        rect.setAttribute("opacity", "0.35");
-        rect.setAttribute("rx", 6);
-        layer.appendChild(rect);
+  const game = BabeGame.create({
+    rules: DotsRules,
+    render,
+    onMatchStart(view) {
+      lastBoardRev = -1;
+      BabeGameUI.showScreen("play-screen");
+      BabeGameUI.setBar(
+        view.isOnline ? `Playing <strong>${escapeHtml(view.peerName || "your partner")}</strong>` : "",
+        "ok"
+      );
+    },
+    onOver(state, view) {
+      [0, 1].forEach((slot) => {
+        const seat = document.getElementById(`final-${slot}`);
+        seat.querySelector(".seat-name").textContent = state.names[slot];
+        seat.querySelector(".seat-score").textContent = state.scores[slot];
+        seat.classList.toggle("you", view.isOnline && slot === view.mySlot);
+      });
+      winnerLine.textContent = state.winner === -1
+        ? "It's a tie!"
+        : view.isOnline
+        ? state.winner === view.mySlot ? "You win! \u{1F3C6}" : `${state.names[state.winner]} wins!`
+        : `${state.names[state.winner]} wins! \u{1F3C6}`;
+      BabeNotify.notify("Game over!", winnerLine.textContent, { sound: "win", basePath: "../" });
+      pushHighScore("dots-and-boxes", { players: state.names.join(" vs "), score: Math.max(...state.scores) });
+      rematchBtn.style.display = view.isOnline && !view.isHost ? "none" : "inline-block";
+      BabeGameUI.showScreen("end-screen");
+      if (view.isOnline) {
+        BabeGameUI.setBar(
+          view.isHost ? "Tap Play Again to start another match." : "Waiting for the host to start another match…",
+          "ok"
+        );
       }
+    },
+    onConnected() {
+      p2Field.style.display = "none";
+      ui.handleConnected();
+    },
+    onPeerReady() { ui.handlePeerReady(); },
+    onPeerLost() {
+      ui.handlePeerLost();
+      BabeGameUI.showScreen("setup-screen");
+      p2Field.style.display = "block";
+    },
+  });
+
+  function config() {
+    return {
+      n: parseInt(gridSizeSelect.value, 10),
+      turnTime: parseInt(turnTimeSelect.value, 10),
+    };
+  }
+
+  const ui = BabeGameUI.bind({
+    game,
+    getConfig: config,
+    getLocalNames: () => [p1Name.value.trim() || "Player 1", p2Name.value.trim() || "Player 2"],
+    onStarted() { lastBoardRev = -1; },
+  });
+
+  rematchBtn.addEventListener("click", () => {
+    lastBoardRev = -1;
+    if (game.mode === "online") {
+      game.hostStart(config());
+    } else {
+      game.startLocal({
+        ...config(),
+        names: [p1Name.value.trim() || "Player 1", p2Name.value.trim() || "Player 2"],
+      });
     }
-  }
-
-  function checkGameEnd() {
-    if (state.boxesClaimed < state.n * state.n) return false;
-    if (state.timer) state.timer.stop();
-    endGame();
-    return true;
-  }
-
-  function endGame() {
-    gameScreen.style.display = "none";
-    endScreen.style.display = "block";
-
-    finalP1.querySelector(".name").textContent = state.p1;
-    finalP1.querySelector(".val").textContent = state.scores[1];
-    finalP2.querySelector(".name").textContent = state.p2;
-    finalP2.querySelector(".val").textContent = state.scores[2];
-
-    let line;
-    if (state.scores[1] === state.scores[2]) line = "It's a tie!";
-    else if (state.scores[1] > state.scores[2]) line = `${state.p1} wins! \u{1F3C6}`;
-    else line = `${state.p2} wins! \u{1F3C6}`;
-    winnerLine.textContent = line;
-    BabeNotify.notify("Game over!", line, { sound: "win", basePath: "../" });
-
-    pushHighScore("dots-and-boxes", {
-      players: `${state.p1} vs ${state.p2}`,
-      score: Math.max(state.scores[1], state.scores[2]),
-    });
-  }
-
-  startBtn.addEventListener("click", startGame);
-  playAgainBtn.addEventListener("click", () => {
-    setupScreen.style.display = "block";
-    gameScreen.style.display = "none";
-    endScreen.style.display = "none";
+    BabeGameUI.showScreen("play-screen");
   });
 })();

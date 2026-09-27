@@ -25,18 +25,23 @@
   <div class="game-shell">
     <h2 style="margin-top:0;">&#128279; Chain Naming</h2>
 
-    <details class="rules" open>
+    <details class="rules">
       <summary>How to play</summary>
-      Choose a category. The first player names anything in it. Each player
-      after that must name something new in the same category that starts
-      with the last letter of the previous word &mdash; no repeats, and you
-      have to answer before the timer runs out. Last player standing wins.
+      The first player names anything in the category. After that, every word
+      must start with the last letter of the word before it &mdash; no
+      repeats, and you have to answer before the clock runs out. Run out of
+      time and you're out. Last one standing wins.
     </details>
 
-    <!-- SETUP -->
+    <div id="online-bar" class="online-bar" style="display:none;"></div>
+
     <div id="setup-screen">
       <div class="field">
-        <label>Players</label>
+        <label for="p1-name">Your name</label>
+        <input type="text" id="p1-name" placeholder="Player 1" />
+      </div>
+      <div class="field" id="local-players-field">
+        <label>Other players (same device)</label>
         <div id="players-list"></div>
         <div class="btn-row">
           <button class="btn secondary small" id="add-player">+ Add player</button>
@@ -53,27 +58,28 @@
         </select>
       </div>
       <div class="field">
-        <label for="time">Time per turn</label>
-        <select id="time">
+        <label for="turn-time">Time per turn</label>
+        <select id="turn-time">
           <option value="10">10 seconds</option>
           <option value="15" selected>15 seconds</option>
           <option value="20">20 seconds</option>
+          <option value="30">30 seconds</option>
         </select>
       </div>
       <div class="btn-row">
-        <button class="btn" id="start-btn">Start Game</button>
+        <button class="btn" id="start-local">Start (same device)</button>
+        <button class="btn secondary" id="start-online">&#127760; Play Online</button>
       </div>
     </div>
 
-    <!-- GAME -->
-    <div id="game-screen" style="display:none;">
+    <div id="play-screen" style="display:none;">
       <p style="text-align:center; color:var(--text-dim);" id="status-label"></p>
-      <h3 style="text-align:center;" id="turn-label"></h3>
+      <div class="turn-banner" id="turn-banner"></div>
       <div class="timer" id="timer-display">00:00</div>
       <p style="text-align:center;" id="requirement-label"></p>
 
       <div class="field">
-        <input type="text" id="word-input" autocomplete="off" placeholder="Type your word..." />
+        <input type="text" id="word-input" autocomplete="off" autocapitalize="none" placeholder="Type your word..." />
       </div>
       <div class="feedback" id="feedback"></div>
       <div class="btn-row">
@@ -83,12 +89,11 @@
       <ul class="chain-log" id="chain-log"></ul>
     </div>
 
-    <!-- END -->
     <div id="end-screen" style="display:none;">
       <h3 id="winner-line" style="text-align:center;"></h3>
       <p style="text-align:center; color:var(--text-dim);" id="chain-length"></p>
       <div class="btn-row">
-        <button class="btn" id="play-again">Play Again</button>
+        <button class="btn" id="rematch-btn">Play Again</button>
         <a class="btn secondary" href="../index.html">Back to games</a>
       </div>
     </div>
@@ -100,6 +105,11 @@
 <script src="../js/profiles.js"></script>
 <script src="../js/notify.js"></script>
 <script>BabeNotify.init("../");</script>
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="../js/online.js"></script>
+<script src="../js/rules/chain-rules.js"></script>
+<script src="../js/game.js"></script>
+<script src="../js/game-ui.js"></script>
 <script src="chain.js"></script>
 </body>
 </html>

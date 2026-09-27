@@ -25,22 +25,23 @@
   <div class="game-shell">
     <h2 style="margin-top:0;">&#128288; Word Scramble</h2>
 
-    <details class="rules" open id="rules-block">
+    <details class="rules">
       <summary>How to play</summary>
-      Two players take turns. Each round the game secretly picks a word from
-      your chosen category and scrambles it. The player NOT setting the round
-      has to type the correct word before the timer runs out. Score is higher
-      the faster you guess. Roles swap every round.
+      Each round the game picks a word and scrambles it. One player races the
+      clock to unscramble it while the other watches; the faster you solve it,
+      the more points you get. Roles swap every round and the highest score at
+      the end wins.
     </details>
 
-    <!-- SETUP -->
+    <div id="online-bar" class="online-bar" style="display:none;"></div>
+
     <div id="setup-screen">
       <div class="field">
-        <label for="p1-name">Player 1 name</label>
+        <label for="p1-name">Your name</label>
         <input type="text" id="p1-name" placeholder="Player 1" />
       </div>
-      <div class="field">
-        <label for="p2-name">Player 2 name</label>
+      <div class="field" id="p2-field">
+        <label for="p2-name">Opponent name (same device)</label>
         <input type="text" id="p2-name" placeholder="Player 2" />
       </div>
       <div class="field">
@@ -71,38 +72,32 @@
         </select>
       </div>
       <div class="btn-row">
-        <button class="btn" id="start-btn">Start Game (same device)</button>
-        <button class="btn secondary" id="play-online-btn">&#127760; Play Online</button>
+        <button class="btn" id="start-local">Start (same device)</button>
+        <button class="btn secondary" id="start-online">&#127760; Play Online</button>
       </div>
-      <p style="color:var(--text-dim); font-size:0.85rem; margin-top:10px;" id="online-mode-note">
-        "Same device" is pass-and-play on one screen. "Play Online" connects you with one other person on a different device using a short room code.
-      </p>
     </div>
 
-    <!-- GAME -->
-    <div id="game-screen" style="display:none;">
-      <p style="text-align:center; display:none;" id="online-badge"></p>
-      <div class="scoreboard">
-        <div class="score-box" id="score-p1">
-          <div class="name"></div>
-          <div class="val">0</div>
+    <div id="play-screen" style="display:none;">
+      <div class="seat-row">
+        <div class="seat" id="seat-0">
+          <div class="seat-name"></div>
+          <div class="seat-score">0</div>
+          <div class="seat-sub">points</div>
         </div>
-        <div class="score-box" id="score-p2">
-          <div class="name"></div>
-          <div class="val">0</div>
+        <div class="seat" id="seat-1">
+          <div class="seat-name"></div>
+          <div class="seat-score">0</div>
+          <div class="seat-sub">points</div>
         </div>
       </div>
 
       <p style="text-align:center; color:var(--text-dim);" id="round-label"></p>
-      <p style="text-align:center;" id="turn-label"></p>
-
+      <div class="turn-banner" id="turn-banner"></div>
       <div class="timer" id="timer-display">00:00</div>
-
       <div class="scramble-word" id="scramble-display"></div>
 
-      <div class="field">
-        <label for="guess-input" id="guess-label">Type your answer</label>
-        <input type="text" id="guess-input" autocomplete="off" placeholder="Your answer..." />
+      <div class="field" id="guess-field">
+        <input type="text" id="guess-input" autocomplete="off" autocapitalize="none" placeholder="Your answer..." />
       </div>
       <div class="feedback" id="feedback"></div>
 
@@ -112,21 +107,22 @@
       </div>
     </div>
 
-    <!-- END -->
     <div id="end-screen" style="display:none;">
       <h3 id="winner-line" style="text-align:center;"></h3>
-      <div class="scoreboard">
-        <div class="score-box" id="final-p1">
-          <div class="name"></div>
-          <div class="val">0</div>
+      <div class="seat-row">
+        <div class="seat" id="final-0">
+          <div class="seat-name"></div>
+          <div class="seat-score">0</div>
+          <div class="seat-sub">points</div>
         </div>
-        <div class="score-box" id="final-p2">
-          <div class="name"></div>
-          <div class="val">0</div>
+        <div class="seat" id="final-1">
+          <div class="seat-name"></div>
+          <div class="seat-score">0</div>
+          <div class="seat-sub">points</div>
         </div>
       </div>
       <div class="btn-row">
-        <button class="btn" id="play-again">Play Again</button>
+        <button class="btn" id="rematch-btn">Play Again</button>
         <a class="btn secondary" href="../index.html">Back to games</a>
       </div>
     </div>
@@ -140,6 +136,9 @@
 <script>BabeNotify.init("../");</script>
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script src="../js/online.js"></script>
+<script src="../js/rules/scramble-rules.js"></script>
+<script src="../js/game.js"></script>
+<script src="../js/game-ui.js"></script>
 <script src="scramble.js"></script>
 </body>
 </html>

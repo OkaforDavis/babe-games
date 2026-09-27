@@ -1,107 +1,127 @@
 (function () {
-  const CATEGORIES = ["Name", "Place", "Animal", "Thing", "Food"];
-  const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+  const CATS = CategoriesRules.CATEGORIES;
+  const ALPHABET = CategoriesRules.ALPHABET;
 
-  const setupScreen = document.getElementById("setup-screen");
-  const letterScreen = document.getElementById("letter-screen");
-  const turnScreen = document.getElementById("turn-screen");
-  const scoringScreen = document.getElementById("scoring-screen");
-  const summaryScreen = document.getElementById("summary-screen");
-  const endScreen = document.getElementById("end-screen");
+  const seatRow = document.getElementById("seat-row");
+  const finalRow = document.getElementById("final-row");
+  const feedback = document.getElementById("feedback");
 
-  const playersList = document.getElementById("players-list");
-  const addPlayerBtn = document.getElementById("add-player");
-  const timeSelect = document.getElementById("time");
-  const startBtn = document.getElementById("start-btn");
-
-  const spinLetterBtn = document.getElementById("spin-letter");
+  const phaseLetter = document.getElementById("phase-letter");
   const letterGrid = document.getElementById("letter-grid");
+  const letterWait = document.getElementById("letter-wait");
+  const letterBanner = document.getElementById("letter-banner");
+  const spinBtn = document.getElementById("spin-letter");
 
-  const turnRoundLabel = document.getElementById("turn-round-label");
-  const turnPlayerLabel = document.getElementById("turn-player-label");
+  const phaseFilling = document.getElementById("phase-filling");
+  const fillBanner = document.getElementById("fill-banner");
   const timerDisplay = document.getElementById("timer-display");
-  const turnFields = document.getElementById("turn-fields");
+  const fillFields = document.getElementById("fill-fields");
   const lockInBtn = document.getElementById("lock-in");
+  const fillWait = document.getElementById("fill-wait");
 
-  const scoringTable = document.getElementById("scoring-table");
-  const finishRoundBtn = document.getElementById("finish-round");
+  const phaseReview = document.getElementById("phase-review");
+  const reviewTable = document.getElementById("review-table");
+  const scoreBtn = document.getElementById("score-round");
 
-  const summaryScores = document.getElementById("summary-scores");
-  const newRoundBtn = document.getElementById("new-round");
+  const phaseSummary = document.getElementById("phase-summary");
+  const roundBreakdown = document.getElementById("round-breakdown");
+  const nextRoundBtn = document.getElementById("next-round");
   const endGameBtn = document.getElementById("end-game");
+  const summaryWait = document.getElementById("summary-wait");
 
   const winnerLine = document.getElementById("winner-line");
-  const finalScores = document.getElementById("final-scores");
-  const playAgainBtn = document.getElementById("play-again");
+  const rematchBtn = document.getElementById("rematch-btn");
 
-  let state = null;
+  const p1Name = document.getElementById("p1-name");
+  const playersList = document.getElementById("players-list");
+  const addPlayerBtn = document.getElementById("add-player");
+  const localPlayersField = document.getElementById("local-players-field");
+  const fillTimeSelect = document.getElementById("fill-time");
 
-  function renderPlayersList() {
-    playersList.innerHTML = "";
-    const count = playersList.dataset.count ? parseInt(playersList.dataset.count, 10) : 2;
-    for (let i = 0; i < count; i++) {
-      const row = document.createElement("div");
-      row.className = "field";
-      row.innerHTML = `<input type="text" placeholder="Player ${i + 1}" data-player-input />`;
-      playersList.appendChild(row);
-    }
-    playersList.dataset.count = count;
-  }
-  renderPlayersList();
+  let fieldsBuiltFor = "";
+  let submittedFor = "";
+  let lastReviewRev = -1;
 
   document.addEventListener("DOMContentLoaded", () => {
     const active = BabeProfiles.getActive();
-    const first = playersList.querySelector("[data-player-input]");
-    if (active && first && !first.value) first.value = active.name;
+    if (active && !p1Name.value) p1Name.value = active.name;
   });
 
-  addPlayerBtn.addEventListener("click", () => {
-    const count = parseInt(playersList.dataset.count, 10) + 1;
-    if (count > 6) return;
-    playersList.dataset.count = count;
-    renderPlayersListPreserving();
-  });
-
-  function renderPlayersListPreserving() {
+  function renderExtraPlayers(count) {
     const existing = [...playersList.querySelectorAll("[data-player-input]")].map((i) => i.value);
-    const count = parseInt(playersList.dataset.count, 10);
+    playersList.dataset.count = count;
     playersList.innerHTML = "";
     for (let i = 0; i < count; i++) {
       const row = document.createElement("div");
       row.className = "field";
-      row.innerHTML = `<input type="text" placeholder="Player ${i + 1}" data-player-input value="${existing[i] || ""}" />`;
+      row.innerHTML = `<input type="text" placeholder="Player ${i + 2}" data-player-input value="${escapeHtml(existing[i] || "")}" />`;
       playersList.appendChild(row);
     }
   }
+  renderExtraPlayers(1);
 
-  function startGame() {
-    const names = [...playersList.querySelectorAll("[data-player-input]")]
-      .map((el, i) => el.value.trim() || `Player ${i + 1}`);
-    state = {
-      players: names,
-      totals: names.map(() => 0),
-      timePerTurn: parseInt(timeSelect.value, 10),
-      usedLetters: [],
-      currentLetter: null,
-      turnIndex: 0,
-      answers: names.map(() => ({})),
-      timer: null,
-      roundNumber: 1,
-    };
-    goToLetterScreen();
+  addPlayerBtn.addEventListener("click", () => {
+    const count = parseInt(playersList.dataset.count, 10) + 1;
+    if (count > 5) return;
+    renderExtraPlayers(count);
+  });
+
+  function localNames() {
+    const extras = [...playersList.querySelectorAll("[data-player-input]")]
+      .map((el, i) => el.value.trim() || `Player ${i + 2}`);
+    return [p1Name.value.trim() || "Player 1", ...extras];
   }
 
-  function goToLetterScreen() {
-    setupScreen.style.display = "none";
-    letterScreen.style.display = "block";
-    turnScreen.style.display = "none";
-    scoringScreen.style.display = "none";
-    summaryScreen.style.display = "none";
-    endScreen.style.display = "none";
-    renderLetterGrid();
+  function showPhase(state) {
+    phaseLetter.style.display = state.phase === "letter" ? "block" : "none";
+    phaseFilling.style.display = state.phase === "filling" ? "block" : "none";
+    phaseReview.style.display = state.phase === "review" ? "block" : "none";
+    phaseSummary.style.display = state.phase === "summary" ? "block" : "none";
   }
 
-  function renderLetterGrid() {
+  function render(state, view) {
+    renderSeats(state, view, seatRow, state.totals);
+    showPhase(state);
+
+    if (state.phase === "letter") renderLetterPhase(state, view);
+    if (state.phase === "filling") renderFillPhase(state, view);
+    if (state.phase === "review") renderReviewPhase(state, view);
+    if (state.phase === "summary") renderSummaryPhase(state, view);
+
+    feedback.textContent = state.message || "";
+    feedback.className = "feedback" + (state.message ? " ok" : "");
+  }
+
+  function renderSeats(state, view, container, values) {
+    container.innerHTML = "";
+    state.names.forEach((name, slot) => {
+      const div = document.createElement("div");
+      div.className = "seat" + (view.isOnline && slot === view.mySlot ? " you" : "");
+      div.innerHTML = `
+        <div class="seat-name">${escapeHtml(name)}</div>
+        <div class="seat-score">${values[slot]}</div>
+        <div class="seat-sub">points</div>
+      `;
+      container.appendChild(div);
+    });
+  }
+
+  // ---- letter ----
+
+  function canPickLetter(view) {
+    return !view.isOnline || view.isHost;
+  }
+
+  function renderLetterPhase(state, view) {
+    const allowed = canPickLetter(view);
+    letterGrid.style.display = allowed ? "grid" : "none";
+    spinBtn.style.display = allowed ? "inline-block" : "none";
+    letterWait.style.display = allowed ? "none" : "block";
+    letterBanner.textContent = allowed
+      ? `Round ${state.round} — pick a letter`
+      : `Round ${state.round}`;
+    if (!allowed) return;
+
     letterGrid.innerHTML = "";
     ALPHABET.forEach((letter) => {
       const btn = document.createElement("button");
@@ -110,208 +130,259 @@
       if (state.usedLetters.includes(letter)) {
         btn.disabled = true;
         btn.style.opacity = 0.3;
+      } else {
+        btn.addEventListener("click", () => game.dispatch({ type: "pickLetter", letter }, view.mySlot));
       }
-      btn.addEventListener("click", () => chooseLetter(letter));
       letterGrid.appendChild(btn);
     });
   }
 
-  spinLetterBtn.addEventListener("click", () => {
+  spinBtn.addEventListener("click", () => {
+    const state = game.state;
+    if (!state) return;
     const available = ALPHABET.filter((l) => !state.usedLetters.includes(l));
-    if (available.length === 0) return;
-    chooseLetter(pickRandom(available));
+    if (!available.length) return;
+    game.dispatch({ type: "pickLetter", letter: pickRandom(available) }, game.view.mySlot);
   });
 
-  function chooseLetter(letter) {
-    state.currentLetter = letter;
-    state.usedLetters.push(letter);
-    state.turnIndex = 0;
-    state.answers = state.players.map(() => ({}));
-    startTurn();
+  // ---- filling ----
+
+  function mySlotFor(state, view) {
+    if (view.isOnline) return view.mySlot;
+    const active = CategoriesRules.activeFillers(state);
+    return active.length ? active[0] : 0;
   }
 
-  function startTurn() {
-    letterScreen.style.display = "none";
-    turnScreen.style.display = "block";
+  function renderFillPhase(state, view) {
+    const slot = mySlotFor(state, view);
+    const active = CategoriesRules.activeFillers(state);
+    const iAmFilling = active.includes(slot);
 
-    const playerName = state.players[state.turnIndex];
-    turnRoundLabel.textContent = `Letter "${state.currentLetter}" · Player ${state.turnIndex + 1} of ${state.players.length}`;
-    turnPlayerLabel.textContent = `${playerName}'s turn`;
+    timerDisplay.textContent = formatSeconds(state.secondsLeft);
+    setTimerClass(timerDisplay, state.secondsLeft, state.fillTime);
 
-    turnFields.innerHTML = "";
-    CATEGORIES.forEach((cat) => {
+    const key = `${state.round}:${state.letter}:${slot}`;
+    if (key !== fieldsBuiltFor) {
+      fieldsBuiltFor = key;
+      buildFields(state);
+      if (iAmFilling) {
+        BabeNotify.notify(
+          view.isOnline ? "Go!" : `${state.names[slot]}'s turn`,
+          `Fill in every category starting with "${state.letter}".`,
+          { sound: "turn", basePath: "../" }
+        );
+      }
+    }
+
+    fillBanner.textContent = iAmFilling
+      ? `Letter "${state.letter}" — go!`
+      : `Letter "${state.letter}"`;
+    fillBanner.className = "turn-banner" + (iAmFilling ? " mine" : "");
+
+    fillFields.style.display = iAmFilling ? "block" : "none";
+    lockInBtn.style.display = iAmFilling ? "inline-block" : "none";
+    fillWait.style.display = iAmFilling ? "none" : "block";
+    if (!iAmFilling) {
+      const waitingOn = active.map((i) => state.names[i]).join(", ");
+      fillWait.textContent = state.submitted[slot]
+        ? `Locked in! Waiting for ${waitingOn || "the others"}…`
+        : `Waiting for ${waitingOn || "the others"}…`;
+    }
+
+    if (state.secondsLeft === 5 && iAmFilling) BabeNotify.playSound("tick");
+
+    // Clock hit zero — push whatever is typed before the host's backstop.
+    if (state.secondsLeft === 0 && iAmFilling && submittedFor !== key) {
+      submittedFor = key;
+      submitAnswers(slot);
+    }
+  }
+
+  function buildFields(state) {
+    fillFields.innerHTML = "";
+    CATS.forEach((cat) => {
       const row = document.createElement("div");
       row.className = "cat-row";
       row.innerHTML = `
         <label>${cat}</label>
-        <input type="text" data-cat="${cat}" placeholder="${state.currentLetter}..." />
+        <input type="text" data-cat="${cat}" autocomplete="off" placeholder="${state.letter}..." />
       `;
-      turnFields.appendChild(row);
+      fillFields.appendChild(row);
     });
-
-    lockInBtn.disabled = false;
-    BabeNotify.notify(`${playerName}'s turn!`, `Fill in Name, Place, Animal, Thing, Food for "${state.currentLetter}".`, { sound: "turn", basePath: "../" });
-
-    state.timer = new CountdownTimer(
-      state.timePerTurn,
-      (secondsLeft) => {
-        timerDisplay.textContent = formatSeconds(secondsLeft);
-        setTimerClass(timerDisplay, secondsLeft, state.timePerTurn);
-        if (secondsLeft === 5) BabeNotify.playSound("tick");
-      },
-      () => finishTurn()
-    );
-    state.timer.start();
+    const first = fillFields.querySelector("input");
+    if (first) first.focus();
   }
 
-  function finishTurn() {
-    if (state.timer) state.timer.stop();
+  function collectAnswers() {
     const answers = {};
-    turnFields.querySelectorAll("[data-cat]").forEach((input) => {
-      answers[input.dataset.cat] = input.value.trim();
+    fillFields.querySelectorAll("[data-cat]").forEach((input) => {
+      answers[input.dataset.cat] = input.value;
     });
-    state.answers[state.turnIndex] = answers;
-
-    state.turnIndex += 1;
-    if (state.turnIndex < state.players.length) {
-      startTurn();
-    } else {
-      goToScoring();
-    }
+    return answers;
   }
 
-  lockInBtn.addEventListener("click", finishTurn);
-
-  function goToScoring() {
-    turnScreen.style.display = "none";
-    scoringScreen.style.display = "block";
-    renderScoringTable();
+  function submitAnswers(slot) {
+    game.dispatch({ type: "submit", answers: collectAnswers() }, slot);
   }
 
-  function renderScoringTable() {
-    // marks[category][playerIndex] = true/false (valid or not), default: valid if non-empty
-    state.marks = CATEGORIES.map((cat) =>
-      state.players.map((_, pIdx) => {
-        const val = state.answers[pIdx][cat] || "";
-        return val.trim().length > 0;
-      })
-    );
+  lockInBtn.addEventListener("click", () => {
+    const state = game.state;
+    if (!state) return;
+    const slot = mySlotFor(state, game.view);
+    submittedFor = `${state.round}:${state.letter}:${slot}`;
+    submitAnswers(slot);
+  });
+
+  // ---- review ----
+
+  function renderReviewPhase(state, view) {
+    if (state.rev === lastReviewRev) return;
+    lastReviewRev = state.rev;
 
     const table = document.createElement("table");
     table.style.width = "100%";
     table.style.borderCollapse = "collapse";
 
-    const thead = document.createElement("tr");
-    thead.innerHTML = `<th style="text-align:left;padding:8px;">Category</th>` +
-      state.players.map((p) => `<th style="text-align:left;padding:8px;">${p}</th>`).join("");
-    table.appendChild(thead);
+    const head = document.createElement("tr");
+    head.innerHTML = `<th style="text-align:left;padding:8px;font-size:0.8rem;color:var(--text-dim);">Category</th>` +
+      state.names.map((n) => `<th style="text-align:left;padding:8px;font-size:0.8rem;">${escapeHtml(n)}</th>`).join("");
+    table.appendChild(head);
 
-    CATEGORIES.forEach((cat, catIdx) => {
+    CATS.forEach((cat) => {
       const tr = document.createElement("tr");
-      const catCell = document.createElement("td");
-      catCell.style.padding = "8px";
-      catCell.style.color = "var(--text-dim)";
-      catCell.textContent = cat;
-      tr.appendChild(catCell);
+      const label = document.createElement("td");
+      label.style.padding = "6px 8px";
+      label.style.color = "var(--text-dim)";
+      label.style.fontSize = "0.85rem";
+      label.textContent = cat;
+      tr.appendChild(label);
 
-      state.players.forEach((_, pIdx) => {
+      state.names.forEach((_, slot) => {
         const td = document.createElement("td");
-        td.style.padding = "6px";
-        const val = state.answers[pIdx][cat] || "(blank)";
+        td.style.padding = "4px";
+        const value = (state.answers[slot] && state.answers[slot][cat]) || "";
+        const valid = state.marks[cat][slot];
         const btn = document.createElement("button");
         btn.type = "button";
-        btn.className = "letter-btn";
+        btn.className = "letter-btn" + (valid ? " chosen" : "");
         btn.style.width = "100%";
         btn.style.textAlign = "left";
         btn.style.padding = "8px 10px";
-        const setLook = () => {
-          btn.classList.toggle("chosen", state.marks[catIdx][pIdx]);
-          btn.textContent = `${val} ${state.marks[catIdx][pIdx] ? "✓" : "✗"}`;
-        };
-        setLook();
-        btn.addEventListener("click", () => {
-          state.marks[catIdx][pIdx] = !state.marks[catIdx][pIdx];
-          setLook();
-        });
+        btn.style.fontWeight = "600";
+        btn.textContent = `${value || "(blank)"} ${valid ? "✓" : "✗"}`;
+        btn.addEventListener("click", () => game.dispatch({ type: "toggleMark", cat, slot }, view.mySlot));
         td.appendChild(btn);
         tr.appendChild(td);
       });
       table.appendChild(tr);
     });
 
-    scoringTable.innerHTML = "";
-    scoringTable.appendChild(table);
+    reviewTable.innerHTML = "";
+    reviewTable.appendChild(table);
   }
 
-  finishRoundBtn.addEventListener("click", () => {
-    // scoring: valid + unique among players who also marked it valid = 10, valid but shared = 5
-    CATEGORIES.forEach((cat, catIdx) => {
-      const validPlayers = state.players
-        .map((_, pIdx) => pIdx)
-        .filter((pIdx) => state.marks[catIdx][pIdx]);
+  scoreBtn.addEventListener("click", () => game.dispatch({ type: "scoreRound" }, game.view.mySlot));
 
-      validPlayers.forEach((pIdx) => {
-        const myAnswer = (state.answers[pIdx][cat] || "").trim().toLowerCase();
-        const isDuplicate = validPlayers.some(
-          (otherIdx) =>
-            otherIdx !== pIdx &&
-            (state.answers[otherIdx][cat] || "").trim().toLowerCase() === myAnswer
+  // ---- summary ----
+
+  function renderSummaryPhase(state, view) {
+    const canDrive = !view.isOnline || view.isHost;
+    nextRoundBtn.style.display = canDrive ? "inline-block" : "none";
+    endGameBtn.style.display = canDrive ? "inline-block" : "none";
+    summaryWait.style.display = canDrive ? "none" : "block";
+
+    roundBreakdown.innerHTML = "";
+    const list = document.createElement("div");
+    list.className = "seat-row";
+    state.names.forEach((name, slot) => {
+      const div = document.createElement("div");
+      div.className = "seat" + (view.isOnline && slot === view.mySlot ? " you" : "");
+      div.innerHTML = `
+        <div class="seat-name">${escapeHtml(name)}</div>
+        <div class="seat-score">+${state.roundScores[slot]}</div>
+        <div class="seat-sub">${state.totals[slot]} total</div>
+      `;
+      list.appendChild(div);
+    });
+    roundBreakdown.appendChild(list);
+  }
+
+  nextRoundBtn.addEventListener("click", () => {
+    lastReviewRev = -1;
+    fieldsBuiltFor = "";
+    submittedFor = "";
+    game.dispatch({ type: "nextRound" }, game.view.mySlot);
+  });
+  endGameBtn.addEventListener("click", () => game.dispatch({ type: "endGame" }, game.view.mySlot));
+
+  // ---- game wiring ----
+
+  const game = BabeGame.create({
+    rules: CategoriesRules,
+    render,
+    onMatchStart(view) {
+      fieldsBuiltFor = "";
+      submittedFor = "";
+      lastReviewRev = -1;
+      BabeGameUI.showScreen("play-screen");
+      BabeGameUI.setBar(
+        view.isOnline ? `Playing <strong>${escapeHtml(view.peerName || "your partner")}</strong>` : "",
+        "ok"
+      );
+    },
+    onOver(state, view) {
+      renderSeats(state, view, finalRow, state.totals);
+      const best = Math.max(...state.totals);
+      const leaders = state.names.filter((_, i) => state.totals[i] === best);
+      winnerLine.textContent = leaders.length > 1
+        ? `It's a tie between ${leaders.join(" & ")}!`
+        : view.isOnline
+        ? state.winner === view.mySlot ? "You win! \u{1F3C6}" : `${leaders[0]} wins!`
+        : `${leaders[0]} wins! \u{1F3C6}`;
+      BabeNotify.notify("Game over!", winnerLine.textContent, { sound: "win", basePath: "../" });
+      pushHighScore("categories", { players: state.names.join(", "), score: best });
+      rematchBtn.style.display = view.isOnline && !view.isHost ? "none" : "inline-block";
+      BabeGameUI.showScreen("end-screen");
+      if (view.isOnline) {
+        BabeGameUI.setBar(
+          view.isHost ? "Tap Play Again to start another game." : "Waiting for the host to start another game…",
+          "ok"
         );
-        state.totals[pIdx] += isDuplicate ? 5 : 10;
-      });
-    });
-
-    goToSummary();
+      }
+    },
+    onConnected() {
+      localPlayersField.style.display = "none";
+      ui.handleConnected();
+    },
+    onPeerReady() { ui.handlePeerReady(); },
+    onPeerLost() {
+      ui.handlePeerLost();
+      BabeGameUI.showScreen("setup-screen");
+      localPlayersField.style.display = "block";
+    },
   });
 
-  function goToSummary() {
-    scoringScreen.style.display = "none";
-    summaryScreen.style.display = "block";
-    summaryScores.innerHTML = "";
-    state.players.forEach((name, i) => {
-      const box = document.createElement("div");
-      box.className = "score-box";
-      box.innerHTML = `<div class="name">${name}</div><div class="val">${state.totals[i]}</div>`;
-      summaryScores.appendChild(box);
-    });
+  function config() {
+    return { fillTime: parseInt(fillTimeSelect.value, 10) };
   }
 
-  newRoundBtn.addEventListener("click", () => {
-    state.roundNumber += 1;
-    goToLetterScreen();
+  const ui = BabeGameUI.bind({
+    game,
+    getConfig: config,
+    getLocalNames: localNames,
+    onStarted() {
+      fieldsBuiltFor = "";
+      submittedFor = "";
+      lastReviewRev = -1;
+    },
   });
 
-  endGameBtn.addEventListener("click", endGame);
-
-  function endGame() {
-    summaryScreen.style.display = "none";
-    endScreen.style.display = "block";
-    finalScores.innerHTML = "";
-    let maxScore = Math.max(...state.totals);
-    let winners = state.players.filter((_, i) => state.totals[i] === maxScore);
-
-    state.players.forEach((name, i) => {
-      const box = document.createElement("div");
-      box.className = "score-box";
-      box.innerHTML = `<div class="name">${name}</div><div class="val">${state.totals[i]}</div>`;
-      finalScores.appendChild(box);
-    });
-
-    winnerLine.textContent = winners.length > 1
-      ? `It's a tie between ${winners.join(" & ")}!`
-      : `${winners[0]} wins! \u{1F3C6}`;
-    BabeNotify.notify("Game over!", winnerLine.textContent, { sound: "win", basePath: "../" });
-
-    pushHighScore("categories", {
-      players: state.players.join(", "),
-      score: maxScore,
-    });
-  }
-
-  playAgainBtn.addEventListener("click", () => {
-    endScreen.style.display = "none";
-    setupScreen.style.display = "block";
+  rematchBtn.addEventListener("click", () => {
+    fieldsBuiltFor = "";
+    submittedFor = "";
+    lastReviewRev = -1;
+    if (game.mode === "online") game.hostStart(config());
+    else game.startLocal({ ...config(), names: localNames() });
+    BabeGameUI.showScreen("play-screen");
   });
-
-  startBtn.addEventListener("click", startGame);
 })();

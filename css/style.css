@@ -127,6 +127,12 @@ nav.crumbs a { color: var(--accent-2); }
 }
 .tag.ready { background: var(--accent-3); color: #08251a; }
 .tag.soon { background: var(--border); color: var(--text-dim); }
+.tag.online {
+  background: rgba(77, 181, 255, 0.18);
+  color: #8fd0ff;
+  border: 1px solid rgba(77, 181, 255, 0.45);
+}
+.tag-row { display: flex; gap: 6px; flex-wrap: wrap; }
 
 footer {
   text-align: center;
@@ -350,4 +356,113 @@ label { font-size: 0.85rem; color: var(--text-dim); display: block; margin-botto
   margin-bottom: 14px;
 }
 .emoji-btn { width: 44px; padding: 8px 0; font-size: 1.2rem; }
+
+/* Online status bar shared by every game */
+.online-bar {
+  background: #170e26;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-bottom: 18px;
+  font-size: 0.92rem;
+  text-align: center;
+  color: var(--text-dim);
+}
+.online-bar.ok { border-color: var(--accent-3); color: var(--text); }
+.online-bar.bad { border-color: var(--danger); color: var(--text); }
+.online-bar strong { color: var(--accent-2); }
+
+.online-pill {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(53, 224, 161, 0.15);
+  color: var(--accent-3);
+  border: 1px solid rgba(53, 224, 161, 0.4);
+}
+
+.seat-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.seat {
+  flex: 1;
+  background: #170e26;
+  border: 2px solid var(--border);
+  border-radius: 14px;
+  padding: 12px;
+  text-align: center;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.seat.active {
+  border-color: var(--accent-2);
+  box-shadow: 0 0 18px rgba(255, 210, 63, 0.2);
+}
+.seat.you .seat-name::after {
+  content: " (you)";
+  color: var(--accent-3);
+  font-weight: 700;
+}
+.seat-name {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.seat-score { font-size: 2rem; font-weight: 800; line-height: 1.1; }
+.seat-sub { font-size: 0.75rem; color: var(--text-dim); }
+
+/* Ncho board */
+.ncho-stage { display: flex; justify-content: center; margin: 10px 0 4px; }
+.ncho-stage svg {
+  width: 100%;
+  height: auto;
+  max-width: 900px;
+  touch-action: manipulation;
+  user-select: none;
+}
+.ncho-stage .pit-hit { cursor: default; }
+.ncho-stage .pit-hit.playable { cursor: pointer; }
+.ncho-stage .pit-ring.playable {
+  animation: pitPulse 1.8s ease-in-out infinite;
+}
+@keyframes pitPulse {
+  0%, 100% { stroke-opacity: 0.35; }
+  50% { stroke-opacity: 1; }
+}
+.ncho-stage .sow-flash { animation: sowFlash 0.5s ease-out; }
+@keyframes sowFlash {
+  0% { filter: brightness(2.1) drop-shadow(0 0 6px rgba(255, 210, 63, 0.9)); }
+  100% { filter: brightness(1); }
+}
+.ncho-stage .capture-flash { animation: captureFlash 0.8s ease-out; }
+@keyframes captureFlash {
+  0% { filter: brightness(2.6) saturate(1.8) drop-shadow(0 0 10px rgba(53, 224, 161, 0.9)); }
+  100% { filter: brightness(1); }
+}
+.turn-banner {
+  text-align: center;
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin: 6px 0 2px;
+}
+.turn-banner.mine { color: var(--accent-3); }
+
+/* Dots and boxes */
+.dab-stage { display: flex; justify-content: center; margin: 12px 0; }
+.dab-stage svg { width: 100%; height: auto; max-width: 460px; touch-action: manipulation; }
+.dab-stage .edge-hit { cursor: pointer; }
+
+.waiting-note {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  margin: 8px 0;
+}
 
