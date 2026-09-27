@@ -6,11 +6,13 @@
   // Sowing is paced so you can count along with it, the way you would at a
   // real board. Short turns get the full unhurried beat; a long relay speeds
   // the hand up so the turn still finishes in reasonable time.
-  const COUNTING_PACE_MS = 300;   // a comfortable "one... two... three"
-  const FASTEST_PACE_MS = 110;
-  const MAX_TURN_MS = 6500;
-  const CAPTURE_BEAT_MS = 720;    // flash, fly to the house, settle
-  const PICKUP_BEAT_MS = 220;
+  const COUNTING_PACE_MS = 460;   // an unhurried "one... two... three"
+  const FASTEST_PACE_MS = 200;    // even a long relay stays countable
+  const MAX_TURN_MS = 11000;
+  // These two must match what the capture and pickup branches below
+  // actually spend, or the budget under-reserves and long turns overrun.
+  const CAPTURE_BEAT_MS = 1000;   // flash, fly to the house, settle
+  const PICKUP_BEAT_MS = 560;
 
   const stage = document.getElementById("board-stage");
   const turnBanner = document.getElementById("turn-banner");
@@ -299,33 +301,36 @@
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  function flySeed(fromIdx, toIdx, ms) {
+  function tween(ms, onFrame) {
     return new Promise((resolve) => {
-      if (!svg) return resolve();
-      const from = centerOf(fromIdx);
-      const to = centerOf(toIdx);
-      const seed = seedNode(from.x, from.y, 7, 3);
-      seed.setAttribute("r", 9);
-      seed.style.filter = "drop-shadow(0 0 6px rgba(255,210,63,0.85))";
-      svg.appendChild(seed);
-
       const start = performance.now();
       function step(now) {
         const t = Math.min(1, (now - start) / ms);
-        // a little arc so it looks tossed rather than dragged
-        const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
-        const x = from.x + (to.x - from.x) * ease;
-        const y = from.y + (to.y - from.y) * ease - Math.sin(Math.PI * t) * 18;
-        seed.setAttribute("cx", x.toFixed(2));
-        seed.setAttribute("cy", y.toFixed(2));
-        if (t < 1) {
-          requestAnimationFrame(step);
-        } else {
-          seed.remove();
-          resolve();
-        }
+        onFrame(t);
+        if (t < 1) requestAnimationFrame(step);
+        else resolve();
       }
       requestAnimationFrame(step);
+    });
+  }
+
+  function flySeed(fromIdx, toIdx, ms) {
+    if (!svg) return Promise.resolve();
+    const from = centerOf(fromIdx);
+    const to = centerOf(toIdx);
+    const seed = seedNode(from.x, from.y, 7, 3);
+    seed.setAttribute("r", 9);
+    seed.style.filter = "drop-shadow(0 0 6px rgba(255,210,63,0.85))";
+    svg.appendChild(seed);
+
+    return tween(ms, (t) => {
+      // a little arc so it looks tossed rather than dragged
+      const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      const x = from.x + (to.x - from.x) * ease;
+      const y = from.y + (to.y - from.y) * ease - Math.sin(Math.PI * t) * 18;
+      seed.setAttribute("cx", x.toFixed(2));
+      seed.setAttribute("cy", y.toFixed(2));
+      if (t >= 1) seed.remove();
     });
   }
 
@@ -347,17 +352,23 @@
     const steps = move.steps || [];
     const drops = steps.filter((s) => s.t === "drop").length;
 
-    // Budget the whole turn, not just the seeds — a relay with several
-    // captures was otherwise running to a quarter of a minute.
+    // Everyday turns run at the full unhurried pace. Only a monster relay
+    // gets hurried along, and then everything scales together — scaling just
+    // the seeds left the fixed capture and scoop beats to overrun on their
+    // own.
     const captureCount = steps.filter((s) => s.t === "capture").length;
     const pickupCount = steps.filter((s) => s.t === "pickup").length;
-    const budget = MAX_TURN_MS - captureCount * CAPTURE_BEAT_MS - pickupCount * PICKUP_BEAT_MS;
-    const pace = Math.max(FASTEST_PACE_MS, Math.min(COUNTING_PACE_MS, budget / Math.max(1, drops)));
+    const projected = drops * COUNTING_PACE_MS + captureCount * CAPTURE_BEAT_MS + pickupCount * PICKUP_BEAT_MS;
+    const scale = Math.max(0.4, Math.min(1, MAX_TURN_MS / Math.max(1, projected)));
+
+    const pace = Math.max(FASTEST_PACE_MS, COUNTING_PACE_MS * scale);
     const flightMs = pace * 0.62;        // the seed travels...
     const settleMs = pace - flightMs;    // ...then rests a beat before the next
-    // At a countable pace every seed gets its own tick; a fast relay thins
-    // them out so it doesn't turn into a buzz.
-    const soundEvery = pace >= 150 ? 1 : Math.max(1, Math.ceil(drops / 16));
+    const captureMs = CAPTURE_BEAT_MS * scale;
+    const pickupMs = PICKUP_BEAT_MS * scale;
+    // At a countable pace every seed gets its own tick; a hurried relay
+    // thins them out so it doesn't turn into a buzz.
+    const soundEvery = pace >= 220 ? 1 : Math.max(1, Math.ceil(drops / 16));
 
     let cursor = move.from;
     let hand = 0;
@@ -372,34 +383,38 @@
         hand = step.count;
         paintPit(step.pit, 0, true);
         cursor = step.pit;
-        showHand(cursor, hand);
+        placeHandAt(cursor, hand);
         // a clear beat on the scoop, so a relay reads as "picked it up again"
-        await wait(i === 0 ? Math.min(380, pace * 1.15) : Math.min(460, pace * 1.4));
+        await wait(i === 0 ? pickupMs : pickupMs * 1.15);
       } else if (step.t === "drop") {
-        await flySeed(cursor, step.pit, flightMs);
+        // the hand carries the seed across, then lets it fall in
+        await Promise.all([
+          flySeed(cursor, step.pit, flightMs),
+          moveHandTo(step.pit, flightMs),
+        ]);
         if (token !== animToken) return false;
         counts[step.pit] += 1;
         hand = Math.max(0, hand - 1);
         paintPit(step.pit, counts[step.pit], true);
         cursor = step.pit;
-        showHand(cursor, hand);
+        setHandCount(hand);
         if (dropIndex % soundEvery === 0) BabeNotify.playSound("tick");
         dropIndex += 1;
         await wait(settleMs);
       } else if (step.t === "capture") {
         hideHand();
         flashPit(step.pit);
-        await wait(250);
+        await wait(captureMs * 0.32);
         if (token !== animToken) return false;
         const house = step.by === 0 ? HOUSES.P1_HOUSE : HOUSES.P2_HOUSE;
         counts[step.pit] = Math.max(0, counts[step.pit] - step.seeds);
         counts[house] += step.seeds;
         paintPit(step.pit, counts[step.pit]);
-        await flySeed(step.pit, house, 300);
+        await flySeed(step.pit, house, captureMs * 0.42);
         if (token !== animToken) return false;
         paintPit(house, counts[house], true);
         BabeNotify.playSound("success");
-        await wait(170);
+        await wait(captureMs * 0.26);
       }
     }
 
@@ -407,37 +422,82 @@
     return token === animToken;
   }
 
-  // A little marker travelling with the sowing showing how many seeds are
-  // still in the hand, so you can count them down.
-  function showHand(atPit, remaining) {
-    if (!svg) return;
+  // The hand that carries the seeds round the board, with a count of what's
+  // still in it so you can tick them down as they drop.
+  let handPos = { x: 0, y: 0 };
+
+  function handOffset(x) {
+    // Beside the pit in portrait, where the rows sit close together;
+    // above it in landscape.
+    return layout && layout.portrait
+      ? { x: x < 180 ? -76 : 76, y: -8 }
+      : { x: 0, y: -78 };
+  }
+
+  function ensureHand() {
+    if (!svg) return null;
     let group = svg.querySelector(".hand-marker");
+    if (group) return group;
+
+    group = svgEl("g", { class: "hand-marker" });
+    const palm = svgEl("text", {
+      "text-anchor": "middle",
+      "dominant-baseline": "central",
+      "font-size": 40,
+      class: "hand-palm",
+    });
+    palm.textContent = "\u{1F932}"; // cupped palms, holding the seeds
+    const badge = svgEl("circle", {
+      cx: 24, cy: -21, r: 15,
+      fill: "#1a1025", stroke: "#ffd23f", "stroke-width": 2.5, opacity: 0.96,
+    });
+    const count = svgEl("text", {
+      x: 24, y: -21,
+      "text-anchor": "middle", "dominant-baseline": "central",
+      "font-size": 15, "font-weight": "800", fill: "#ffd23f",
+    });
+    group.appendChild(palm);
+    group.appendChild(badge);
+    group.appendChild(count);
+    svg.appendChild(group);
+    return group;
+  }
+
+  function placeHandAt(atPit, remaining) {
+    const group = ensureHand();
+    if (!group) return;
     if (remaining <= 0) return hideHand();
     const pos = centerOf(atPit);
-    // Sits outside the pit: beside it in portrait (the rows are stacked
-    // tightly), above it in landscape.
-    const offset = layout && layout.portrait
-      ? { x: pos.x < 180 ? -70 : 70, y: 0 }
-      : { x: 0, y: -72 };
-
-    if (!group) {
-      group = svgEl("g", { class: "hand-marker" });
-      const bubble = svgEl("circle", { r: 17, fill: "#1a1025", stroke: "#ffd23f", "stroke-width": 2.5, opacity: 0.95 });
-      const text = svgEl("text", {
-        "text-anchor": "middle", "dominant-baseline": "central",
-        "font-size": 16, "font-weight": "800", fill: "#ffd23f",
-      });
-      group.appendChild(bubble);
-      group.appendChild(text);
-      svg.appendChild(group);
-    }
+    const offset = handOffset(pos.x);
+    handPos = { x: pos.x + offset.x, y: pos.y + offset.y };
     group.style.display = "";
-    group.querySelector("circle").setAttribute("cx", pos.x + offset.x);
-    group.querySelector("circle").setAttribute("cy", pos.y + offset.y);
-    const text = group.querySelector("text");
-    text.setAttribute("x", pos.x + offset.x);
-    text.setAttribute("y", pos.y + offset.y);
-    text.textContent = remaining;
+    group.setAttribute("transform", `translate(${handPos.x.toFixed(1)} ${handPos.y.toFixed(1)})`);
+    setHandCount(remaining);
+  }
+
+  function setHandCount(remaining) {
+    const group = svg && svg.querySelector(".hand-marker");
+    if (!group) return;
+    if (remaining <= 0) return hideHand();
+    group.querySelectorAll("text")[1].textContent = remaining;
+  }
+
+  // Carries the hand across to the next pit while the seed is in flight.
+  function moveHandTo(atPit, ms) {
+    const group = ensureHand();
+    if (!group || group.style.display === "none") return Promise.resolve();
+    const pos = centerOf(atPit);
+    const offset = handOffset(pos.x);
+    const to = { x: pos.x + offset.x, y: pos.y + offset.y };
+    const from = { ...handPos };
+    return tween(ms, (t) => {
+      const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      handPos = {
+        x: from.x + (to.x - from.x) * ease,
+        y: from.y + (to.y - from.y) * ease,
+      };
+      group.setAttribute("transform", `translate(${handPos.x.toFixed(1)} ${handPos.y.toFixed(1)})`);
+    });
   }
 
   function hideHand() {
