@@ -39,7 +39,7 @@ const GAME_CATALOG = [
     id: "ncho",
     title: "Ncho",
     emoji: "\u{1F331}",
-    desc: "The seed-and-pit board game from home. Sow, capture, and fill your store.",
+    desc: "The seed-and-pit board game from home. Land a pit on four and you collect it. Mancala/Ayo rules included too.",
     href: "games/ncho.html",
     status: "ready",
     online: true,

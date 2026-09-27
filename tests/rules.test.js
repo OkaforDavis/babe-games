@@ -22,18 +22,171 @@ function test(name, fn) {
   }
 }
 
-// ---------------- Ncho ----------------
+// ---------------- Ncho: the main game (capture on four) ----------------
 
-test("ncho: fresh board has 4 seeds per pit and empty stores", () => {
-  const s = Ncho.createState({ seedsPerPit: 4 });
+function four(overrides) {
+  return Object.assign(Ncho.createState({ seedsPerPit: 4, variant: "four", names: ["A", "B"] }), overrides || {});
+}
+
+test("ncho four: fresh board has four seeds per pit and empty houses", () => {
+  const s = four();
+  assert.strictEqual(s.variant, "four");
   assert.strictEqual(s.pits.filter((v) => v === 4).length, 12);
   assert.strictEqual(s.pits[6], 0);
   assert.strictEqual(s.pits[13], 0);
-  assert.strictEqual(s.turn, 0);
 });
 
-test("ncho: landing the last seed in your own store gives another turn", () => {
-  const s = Ncho.createState({ seedsPerPit: 4 });
+test("ncho four: the opening move does not sweep the board", () => {
+  // Every pit starts on four, so only pits this move feeds can be taken.
+  const s = four();
+  const next = Ncho.applyAction(s, { type: "sow", pit: 0 }, 0);
+  assert.deepStrictEqual(next.lastMove.captures, [], "nothing is collected on the first move");
+  assert.strictEqual(Ncho.seedsOnBoard(next.pits), 48, "every seed is still in play");
+  assert.strictEqual(next.pits[6], 0);
+  assert.strictEqual(next.pits[13], 0);
+});
+
+test("ncho four: seeds are never sown into either house", () => {
+  const s = four();
+  s.pits[0] = 20; // more than a full lap
+  const next = Ncho.applyAction(s, { type: "sow", pit: 0 }, 0);
+  assert.strictEqual(next.lastMove.path.includes(6), false, "skips your own house");
+  assert.strictEqual(next.lastMove.path.includes(13), false, "skips their house");
+});
+
+test("ncho four: a pit you feed to four is collected by whoever owns it", () => {
+  const s = four();
+  s.pits = new Array(14).fill(0);
+  s.pits[0] = 2;   // sows into pits 1 and 2
+  s.pits[1] = 3;   // -> becomes 4, owned by slot 0
+  s.pits[2] = 9;   // -> becomes 10, untouched by the rule
+  s.pits[8] = 5;   // keeps the game alive
+  const next = Ncho.applyAction(s, { type: "sow", pit: 0 }, 0);
+  assert.strictEqual(next.pits[1], 0, "the four is lifted out");
+  assert.strictEqual(next.pits[6], 4, "into its owner's house");
+  assert.strictEqual(next.lastMove.captures.length, 1);
+  assert.strictEqual(next.lastMove.captures[0].by, 0);
+});
+
+test("ncho four: your last seed making four on their side is yours", () => {
+  const s = four();
+  s.pits = new Array(14).fill(0);
+  s.pits[5] = 2;  // sows into 7 then 8
+  s.pits[7] = 1;
+  s.pits[8] = 3;  // last seed lands here making four, on slot 1's side
+  s.pits[0] = 3;  // keeps slot 0 alive
+  const next = Ncho.applyAction(s, { type: "sow", pit: 5 }, 0);
+  assert.strictEqual(next.pits[8], 0, "collected");
+  assert.strictEqual(next.pits[6], 4, "taken by the player who sowed it, not the owner");
+  assert.strictEqual(next.pits[13], 0);
+  assert.strictEqual(next.lastMove.captures[0].viaLastSeed, true);
+});
+
+test("ncho four: a four you feed on their side that isn't your last seed stays theirs", () => {
+  const s = four();
+  s.pits = new Array(14).fill(0);
+  s.pits[5] = 3;  // sows into 7, 8, 9
+  s.pits[7] = 3;  // -> four, but not the last seed, so slot 1 keeps it
+  s.pits[9] = 0;  // last seed lands here, only one seed, no capture
+  s.pits[0] = 2;
+  const next = Ncho.applyAction(s, { type: "sow", pit: 5 }, 0);
+  assert.strictEqual(next.pits[7], 0, "collected");
+  assert.strictEqual(next.pits[13], 4, "by its owner");
+  assert.strictEqual(next.pits[6], 0, "the sower gets nothing from it");
+});
+
+test("ncho four: one move can collect several pits at once", () => {
+  const s = four();
+  s.pits = new Array(14).fill(0);
+  s.pits[0] = 3;  // sows into 1, 2, 3
+  s.pits[1] = 3;
+  s.pits[2] = 3;
+  s.pits[3] = 3;  // all three become four; the last one is the sower's anyway
+  s.pits[9] = 5;
+  const next = Ncho.applyAction(s, { type: "sow", pit: 0 }, 0);
+  assert.strictEqual(next.lastMove.captures.length, 3);
+  assert.strictEqual(next.pits[6], 12, "all three fours go home");
+});
+
+test("ncho four: a pit pushed past four is not collected", () => {
+  const s = four();
+  s.pits = new Array(14).fill(0);
+  s.pits[0] = 1;
+  s.pits[1] = 4;  // becomes five
+  s.pits[8] = 3;
+  const next = Ncho.applyAction(s, { type: "sow", pit: 0 }, 0);
+  assert.strictEqual(next.pits[1], 5);
+  assert.deepStrictEqual(next.lastMove.captures, []);
+});
+
+test("ncho four: an empty side does not end it while the other player can still sow", () => {
+  // Slot 0 empties their own row, but slot 1 has seeds and may well feed
+  // some back across, so play carries on.
+  const s = four();
+  s.pits = new Array(14).fill(0);
+  s.pits[5] = 1;   // lands in pit 7, leaving slot 0 with nothing
+  s.pits[9] = 6;
+  const next = Ncho.applyAction(s, { type: "sow", pit: 5 }, 0);
+  assert.strictEqual(next.over, false, "the game keeps going");
+  assert.strictEqual(next.turn, 1);
+});
+
+test("ncho four: the player to move having nothing ends it, and the other takes the rest", () => {
+  const s = four();
+  s.pits = new Array(14).fill(0);
+  s.pits[0] = 1;   // slot 0 sows within their own row
+  s.pits[2] = 5;
+  s.pits[6] = 20;
+  s.pits[13] = 16; // slot 1's row is empty, so they cannot answer
+  const next = Ncho.applyAction(s, { type: "sow", pit: 0 }, 0);
+  assert.strictEqual(next.over, true);
+  assert.strictEqual(Ncho.seedsOnBoard(next.pits), 0, "board is cleared");
+  assert.strictEqual(next.pits[6], 26, "slot 0 sweeps the 6 seeds still on the board");
+  assert.strictEqual(next.winner, 0);
+});
+
+test("ncho four: play stops once fewer than four seeds remain", () => {
+  const s = four();
+  s.pits = new Array(14).fill(0);
+  s.pits[0] = 1;
+  s.pits[8] = 1;
+  s.pits[6] = 25;
+  s.pits[13] = 21;
+  const next = Ncho.applyAction(s, { type: "sow", pit: 0 }, 0);
+  assert.strictEqual(next.over, true, "nobody can reach four any more");
+  assert.strictEqual(next.winner, 0);
+});
+
+test("ncho four: seeds are never created or lost", () => {
+  let s = four();
+  const total = s.pits.reduce((a, b) => a + b, 0);
+  let guard = 0;
+  while (!s.over && guard++ < 600) {
+    const moves = Ncho.legalMoves(s, s.turn);
+    if (!moves.length) break;
+    const next = Ncho.applyAction(s, { type: "sow", pit: moves[guard % moves.length] }, s.turn);
+    assert.ok(next, "a legal move must be accepted");
+    s = next;
+    assert.strictEqual(s.pits.reduce((a, b) => a + b, 0), total, `seed count changed at move ${guard}`);
+  }
+  assert.strictEqual(s.over, true, "the game reaches an end");
+});
+
+test("ncho four: a move records what the board looked like first, for the animation", () => {
+  const s = four();
+  const next = Ncho.applyAction(s, { type: "sow", pit: 2 }, 0);
+  assert.deepStrictEqual(next.lastMove.before, s.pits, "the pre-move board is kept");
+  assert.deepStrictEqual(next.lastMove.path, [3, 4, 5, 7], "and the route the seeds took");
+});
+
+// ---------------- Ncho: the Mancala/Ayo variant ----------------
+
+function classic(seeds) {
+  return Ncho.createState({ seedsPerPit: seeds || 4, variant: "classic", names: ["A", "B"] });
+}
+
+test("ncho classic: landing the last seed in your own store gives another turn", () => {
+  const s = classic();
   const next = Ncho.applyAction(s, { type: "sow", pit: 2 }, 0);
   assert.strictEqual(next.pits[2], 0);
   assert.strictEqual(next.pits[3], 5);
@@ -42,24 +195,24 @@ test("ncho: landing the last seed in your own store gives another turn", () => {
   assert.strictEqual(next.lastMove.extraTurn, true);
 });
 
-test("ncho: an ordinary move passes the turn", () => {
-  const s = Ncho.createState({ seedsPerPit: 4 });
+test("ncho classic: an ordinary move passes the turn", () => {
+  const s = classic();
   const next = Ncho.applyAction(s, { type: "sow", pit: 5 }, 0);
   assert.strictEqual(next.pits[6], 1);
   assert.strictEqual(next.pits[9], 5);
   assert.strictEqual(next.turn, 1);
 });
 
-test("ncho: sowing never drops a seed in the opponent's store", () => {
-  const s = Ncho.createState({ seedsPerPit: 4 });
+test("ncho classic: sowing never drops a seed in the opponent's store", () => {
+  const s = classic();
   s.pits[0] = 14; // enough to wrap all the way round
   const next = Ncho.applyAction(s, { type: "sow", pit: 0 }, 0);
   assert.strictEqual(next.pits[13], 0, "opponent store must stay untouched");
   assert.ok(next.pits[6] >= 1, "own store should have been filled");
 });
 
-test("ncho: last seed into your own empty pit captures the pit opposite", () => {
-  const s = Ncho.createState({ seedsPerPit: 4 });
+test("ncho classic: last seed into your own empty pit captures the pit opposite", () => {
+  const s = classic();
   s.pits = new Array(14).fill(0);
   s.pits[0] = 1; // one seed, will land in pit 1
   s.pits[1] = 0; // own empty pit
@@ -68,11 +221,11 @@ test("ncho: last seed into your own empty pit captures the pit opposite", () => 
   assert.strictEqual(next.pits[1], 0, "landing pit is emptied by the capture");
   assert.strictEqual(next.pits[11], 0, "opposite pit is captured");
   assert.strictEqual(next.pits[6], 7, "captured seeds go to the store");
-  assert.strictEqual(next.lastMove.captured.total, 7);
+  assert.strictEqual(next.lastMove.captures[0].seeds, 7);
 });
 
-test("ncho: no capture when the opposite pit is empty", () => {
-  const s = Ncho.createState({ seedsPerPit: 4 });
+test("ncho classic: no capture when the opposite pit is empty", () => {
+  const s = classic();
   s.pits = new Array(14).fill(0);
   s.pits[0] = 1;
   s.pits[1] = 0;
@@ -83,8 +236,8 @@ test("ncho: no capture when the opposite pit is empty", () => {
   assert.strictEqual(next.pits[6], 0);
 });
 
-test("ncho: emptying a side ends the game and sweeps the remainder", () => {
-  const s = Ncho.createState({ seedsPerPit: 4 });
+test("ncho classic: emptying a side ends the game and sweeps the remainder", () => {
+  const s = classic();
   s.pits = new Array(14).fill(0);
   s.pits[5] = 1; // last seed on slot 0's side, lands in own store
   s.pits[7] = 3;
@@ -98,17 +251,19 @@ test("ncho: emptying a side ends the game and sweeps the remainder", () => {
   assert.strictEqual(next.winner, 0);
 });
 
-test("ncho: you cannot move on someone else's turn, from an empty pit, or from their row", () => {
-  const s = Ncho.createState({ seedsPerPit: 4 });
-  assert.strictEqual(Ncho.applyAction(s, { type: "sow", pit: 0 }, 1), null, "wrong player");
-  assert.strictEqual(Ncho.applyAction(s, { type: "sow", pit: 8 }, 0), null, "not your row");
-  const empty = Ncho.createState({ seedsPerPit: 4 });
-  empty.pits[3] = 0;
-  assert.strictEqual(Ncho.applyAction(empty, { type: "sow", pit: 3 }, 0), null, "empty pit");
+test("ncho: neither variant lets you move out of turn, from an empty pit, or from their row", () => {
+  ["four", "classic"].forEach((variant) => {
+    const s = Ncho.createState({ seedsPerPit: 4, variant });
+    assert.strictEqual(Ncho.applyAction(s, { type: "sow", pit: 0 }, 1), null, `${variant}: wrong player`);
+    assert.strictEqual(Ncho.applyAction(s, { type: "sow", pit: 8 }, 0), null, `${variant}: not your row`);
+    const empty = Ncho.createState({ seedsPerPit: 4, variant });
+    empty.pits[3] = 0;
+    assert.strictEqual(Ncho.applyAction(empty, { type: "sow", pit: 3 }, 0), null, `${variant}: empty pit`);
+  });
 });
 
-test("ncho: seeds are conserved across a long game", () => {
-  let s = Ncho.createState({ seedsPerPit: 4 });
+test("ncho classic: seeds are conserved across a long game", () => {
+  let s = classic();
   const total = s.pits.reduce((a, b) => a + b, 0);
   let guard = 0;
   while (!s.over && guard++ < 500) {

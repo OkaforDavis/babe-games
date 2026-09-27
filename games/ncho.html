@@ -26,17 +26,35 @@
     <h2 style="margin-top:0;">&#127793; Ncho</h2>
 
     <details class="rules">
-      <summary>How to play</summary>
-      Each player owns the six pits on their side and the store at their end.
-      On your turn, pick one of your pits and its seeds are sown one at a time
-      into each pit going round &mdash; your pits, your store, then your
-      opponent's pits, never their store. Land your last seed in your own
-      empty pit and you capture it plus everything in the pit facing it. Land
-      it in your own store and you go again. When one side runs out, the other
-      sweeps up what's left. Most seeds in your store wins.
+      <summary>How to play &mdash; capture on four (the main game)</summary>
+      Every pit starts with four seeds. On your turn, pick one of your pits
+      and its seeds drop one at a time into each pit going round; the houses
+      are just collecting bowls, nothing is sown into them.
       <br /><br />
-      These are the widely-played Mancala/Ayo rules &mdash; house rules for
-      Ncho differ from family to family, so tell me yours if it's different.
+      Any pit you drop a seed into that lands on <strong>exactly four</strong>
+      gets collected. Normally it goes to whoever owns that pit &mdash; so a
+      four you make on your own row is yours. But if it was your
+      <strong>last seed</strong> that made it four, you take it even when the
+      pit is on their side. Same in reverse: if their last seed makes four in
+      one of your pits, they collect it.
+      <br /><br />
+      Play carries on while a four can still be made. If the player to move
+      has nothing left to sow, the other player takes everything still on the
+      board. Once fewer than four seeds remain nobody can collect again, so
+      it stops there. Most seeds collected wins.
+      <br /><br />
+      If the seeds just go round and round with nobody collecting for a very
+      long stretch, the game is called and each player keeps what's on their
+      own side &mdash; otherwise it could run forever.
+    </details>
+
+    <details class="rules">
+      <summary>How to play &mdash; Mancala / Ayo style</summary>
+      The other version. Seeds are sown into your own house as you pass it
+      (never theirs). Land your last seed in an empty pit on your own row and
+      you capture it plus everything in the pit facing it; land it in your
+      house and you go again. When one row empties, the other player sweeps
+      up their own leftovers. Most seeds in your house wins.
     </details>
 
     <div id="online-bar" class="online-bar" style="display:none;"></div>
@@ -52,10 +70,24 @@
         <input type="text" id="p2-name" placeholder="Player 2" />
       </div>
       <div class="field">
+        <label for="variant">Which Ncho?</label>
+        <select id="variant">
+          <option value="four" selected>Capture on four &mdash; the main game</option>
+          <option value="classic">Mancala / Ayo style</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="my-side">Which row of six is yours</label>
+        <select id="my-side">
+          <option value="bottom" selected>The near row (bottom)</option>
+          <option value="top">The far row (top)</option>
+        </select>
+      </div>
+      <div class="field">
         <label for="seeds">Seeds per pit</label>
         <select id="seeds">
           <option value="3">3 &mdash; quick game</option>
-          <option value="4" selected>4 &mdash; classic</option>
+          <option value="4" selected>4 &mdash; the real thing</option>
           <option value="6">6 &mdash; long game</option>
         </select>
       </div>
@@ -81,8 +113,12 @@
       </div>
 
       <div class="turn-banner" id="turn-banner"></div>
+      <p class="waiting-note" id="board-note"></p>
       <div class="ncho-stage" id="board-stage"></div>
       <div class="feedback" id="feedback"></div>
+      <div class="btn-row" style="justify-content:center;">
+        <button class="btn secondary small" id="flip-board">Flip board</button>
+      </div>
     </div>
 
     <!-- END -->

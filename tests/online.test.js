@@ -200,6 +200,29 @@ test("online: a rematch moves both sides into a brand new match", () => {
   s.stop();
 });
 
+test("online: the capture-on-four variant syncs captures and the animation data", () => {
+  const s = connectPair(Ncho, { seedsPerPit: 4, variant: "four" });
+  assert.strictEqual(s.seen.guest.variant, "four");
+
+  s.host.dispatch({ type: "sow", pit: 0 });
+  s.sync();
+  assert.ok(Array.isArray(s.seen.guest.lastMove.before), "the pre-move board reaches the other device");
+  same(s.seen.guest.lastMove.before, s.seen.host.lastMove.before, "so both can replay the same animation");
+  same(s.seen.guest.lastMove.path, s.seen.host.lastMove.path, "along the same route");
+  same(s.seen.guest.lastMove.captures, s.seen.host.lastMove.captures, "collecting the same pits");
+  s.stop();
+});
+
+test("online: the Mancala-style variant runs through the same engine", () => {
+  const s = connectPair(Ncho, { seedsPerPit: 4, variant: "classic" });
+  assert.strictEqual(s.seen.guest.variant, "classic");
+  s.host.dispatch({ type: "sow", pit: 2 }); // ends in their own house
+  s.sync();
+  assert.strictEqual(s.seen.guest.turn, 0, "the guest agrees the host goes again");
+  assert.strictEqual(s.seen.guest.pits[6], 1);
+  s.stop();
+});
+
 // ---------------- per game ----------------
 
 test("online: dots and boxes keeps both boards identical", () => {
