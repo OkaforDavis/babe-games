@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Photo Puzzle — Babe Games</title>
+<link rel="manifest" href="../manifest.json" />
+<meta name="theme-color" content="#1a1025" />
+<link rel="icon" href="../icons/icon-192.png" />
+<link rel="apple-touch-icon" href="../icons/icon-192.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<link rel="stylesheet" href="../css/style.css" />
+<style>
+  .puzzle-board {
+    display: grid;
+    gap: 3px;
+    width: min(420px, 100%);
+    aspect-ratio: 1 / 1;
+    margin: 20px auto;
+    background: var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .puzzle-tile {
+    background-repeat: no-repeat;
+    cursor: pointer;
+    border: 2px solid transparent;
+  }
+  .puzzle-tile.selected { border-color: var(--accent); }
+  .image-choice-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+  .image-choice {
+    width: 70px; height: 70px; border-radius: 10px;
+    border: 2px solid var(--border);
+    background-size: cover;
+    background-position: center;
+    cursor: pointer;
+  }
+  .image-choice.chosen { border-color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="site-header">
+    <div class="logo"><a href="../index.html">Babe <span>Games</span></a></div>
+    <div class="header-widgets">
+      <nav class="crumbs"><a href="../index.html">&larr; All games</a></nav>
+      <div id="notify-widget"></div>
+      <div id="profile-widget"></div>
+    </div>
+  </header>
+
+  <div class="game-shell">
+    <h2 style="margin-top:0;">&#129513; Photo Puzzle</h2>
+
+    <details class="rules" open>
+      <summary>How to play</summary>
+      Pick a picture (or upload your own &mdash; it stays on your device,
+      nothing is uploaded anywhere), pick how many pieces, then tap two
+      tiles to swap them. Get every tile back to its right spot to solve it.
+      Fewer swaps and less time make a better score.
+    </details>
+
+    <!-- SETUP -->
+    <div id="setup-screen">
+      <div class="field">
+        <label>Choose a picture</label>
+        <div class="image-choice-row" id="image-choice-row"></div>
+        <input type="file" id="upload-input" accept="image/*" />
+      </div>
+      <div class="field">
+        <label for="grid-size">Difficulty</label>
+        <select id="grid-size">
+          <option value="3">Easy (3 &times; 3)</option>
+          <option value="4" selected>Medium (4 &times; 4)</option>
+          <option value="5">Hard (5 &times; 5)</option>
+        </select>
+      </div>
+      <div class="btn-row">
+        <button class="btn" id="start-btn">Start Puzzle</button>
+      </div>
+    </div>
+
+    <!-- GAME -->
+    <div id="game-screen" style="display:none;">
+      <div class="scoreboard">
+        <div class="score-box">
+          <div class="name">Time</div>
+          <div class="val" id="time-display">00:00</div>
+        </div>
+        <div class="score-box">
+          <div class="name">Swaps</div>
+          <div class="val" id="moves-display">0</div>
+        </div>
+      </div>
+      <div class="puzzle-board" id="puzzle-board"></div>
+      <div class="feedback" id="feedback"></div>
+      <div class="btn-row">
+        <button class="btn secondary" id="give-up-btn">Give Up</button>
+      </div>
+    </div>
+
+    <!-- END -->
+    <div id="end-screen" style="display:none;">
+      <h3 style="text-align:center;">Solved! \u{1F389}</h3>
+      <div class="scoreboard">
+        <div class="score-box">
+          <div class="name">Time</div>
+          <div class="val" id="final-time">00:00</div>
+        </div>
+        <div class="score-box">
+          <div class="name">Swaps</div>
+          <div class="val" id="final-moves">0</div>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn" id="play-again">Play Again</button>
+        <a class="btn secondary" href="../index.html">Back to games</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/common.js"></script>
+<script src="../js/data.js"></script>
+<script src="../js/profiles.js"></script>
+<script src="../js/notify.js"></script>
+<script>BabeNotify.init("../");</script>
+<script src="puzzle.js"></script>
+</body>
+</html>

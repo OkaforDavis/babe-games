@@ -3,7 +3,7 @@
 // location, so this works whether the site sits at a domain root or a
 // GitHub Pages project subpath.
 
-const CACHE_VERSION = "babe-games-v2";
+const CACHE_VERSION = "babe-games-v3";
 const SHELL_FILES = [
   "./",
   "index.html",
@@ -20,6 +20,12 @@ const SHELL_FILES = [
   "games/categories.js",
   "games/chain.html",
   "games/chain.js",
+  "games/dots-and-boxes.html",
+  "games/dots-and-boxes.js",
+  "games/ncho.html",
+  "games/ncho.js",
+  "games/puzzle.html",
+  "games/puzzle.js",
   "icons/icon-192.png",
   "icons/icon-512.png",
   "icons/icon-maskable.png",

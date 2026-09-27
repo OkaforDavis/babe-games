@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Dots and Boxes — Babe Games</title>
+<link rel="manifest" href="../manifest.json" />
+<meta name="theme-color" content="#1a1025" />
+<link rel="icon" href="../icons/icon-192.png" />
+<link rel="apple-touch-icon" href="../icons/icon-192.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<link rel="stylesheet" href="../css/style.css" />
+</head>
+<body>
+<div class="wrap">
+  <header class="site-header">
+    <div class="logo"><a href="../index.html">Babe <span>Games</span></a></div>
+    <div class="header-widgets">
+      <nav class="crumbs"><a href="../index.html">&larr; All games</a></nav>
+      <div id="notify-widget"></div>
+      <div id="profile-widget"></div>
+    </div>
+  </header>
+
+  <div class="game-shell">
+    <h2 style="margin-top:0;">&#128209; Dots and Boxes</h2>
+
+    <details class="rules" open>
+      <summary>How to play</summary>
+      The classic paper-and-pen game. Take turns drawing one line between two
+      dots. Complete the fourth side of a box and you claim it (and get to go
+      again). Whoever claims the most boxes when the grid is full wins.
+    </details>
+
+    <!-- SETUP -->
+    <div id="setup-screen">
+      <div class="field">
+        <label for="p1-name">Player 1 name</label>
+        <input type="text" id="p1-name" placeholder="Player 1" />
+      </div>
+      <div class="field">
+        <label for="p2-name">Player 2 name</label>
+        <input type="text" id="p2-name" placeholder="Player 2" />
+      </div>
+      <div class="field">
+        <label for="grid-size">Grid size</label>
+        <select id="grid-size">
+          <option value="3" selected>3 &times; 3 boxes</option>
+          <option value="4">4 &times; 4 boxes</option>
+          <option value="5">5 &times; 5 boxes</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="turn-time">Time per move</label>
+        <select id="turn-time">
+          <option value="15">15 seconds</option>
+          <option value="20" selected>20 seconds</option>
+          <option value="30">30 seconds</option>
+          <option value="0">No timer</option>
+        </select>
+      </div>
+      <div class="btn-row">
+        <button class="btn" id="start-btn">Start Game (same device)</button>
+      </div>
+    </div>
+
+    <!-- GAME -->
+    <div id="game-screen" style="display:none;">
+      <div class="scoreboard">
+        <div class="score-box" id="score-p1">
+          <div class="name"></div>
+          <div class="val">0</div>
+        </div>
+        <div class="score-box" id="score-p2">
+          <div class="name"></div>
+          <div class="val">0</div>
+        </div>
+      </div>
+      <p style="text-align:center;" id="turn-label"></p>
+      <div class="timer" id="timer-display" style="display:none;">00:00</div>
+      <div style="display:flex; justify-content:center;">
+        <svg id="board-svg" style="max-width:100%; height:auto;"></svg>
+      </div>
+      <div class="feedback" id="feedback"></div>
+    </div>
+
+    <!-- END -->
+    <div id="end-screen" style="display:none;">
+      <h3 id="winner-line" style="text-align:center;"></h3>
+      <div class="scoreboard">
+        <div class="score-box" id="final-p1">
+          <div class="name"></div>
+          <div class="val">0</div>
+        </div>
+        <div class="score-box" id="final-p2">
+          <div class="name"></div>
+          <div class="val">0</div>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn" id="play-again">Play Again</button>
+        <a class="btn secondary" href="../index.html">Back to games</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/common.js"></script>
+<script src="../js/data.js"></script>
+<script src="../js/profiles.js"></script>
+<script src="../js/notify.js"></script>
+<script>BabeNotify.init("../");</script>
+<script src="dots-and-boxes.js"></script>
+</body>
+</html>

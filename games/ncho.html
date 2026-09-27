@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Ncho — Babe Games</title>
+<link rel="manifest" href="../manifest.json" />
+<meta name="theme-color" content="#1a1025" />
+<link rel="icon" href="../icons/icon-192.png" />
+<link rel="apple-touch-icon" href="../icons/icon-192.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<link rel="stylesheet" href="../css/style.css" />
+<style>
+  .ncho-board { display: flex; flex-direction: column; gap: 10px; margin: 20px 0; }
+  .ncho-row { display: flex; gap: 8px; justify-content: center; }
+  .ncho-row.reverse { flex-direction: row-reverse; }
+  .ncho-pit {
+    width: 52px; height: 52px; border-radius: 50%;
+    background: #170e26; border: 2px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 1.1rem; cursor: pointer;
+    flex-shrink: 0;
+  }
+  .ncho-pit:hover { border-color: var(--accent); }
+  .ncho-pit.empty { opacity: 0.4; cursor: default; }
+  .ncho-pit.disabled { cursor: default; }
+  .ncho-store {
+    width: 60px; height: 120px; border-radius: 14px;
+    background: #170e26; border: 2px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 1.3rem; flex-shrink: 0;
+  }
+  .ncho-mid { display: flex; align-items: center; gap: 8px; }
+  .ncho-pits-col { display: flex; flex-direction: column; gap: 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="site-header">
+    <div class="logo"><a href="../index.html">Babe <span>Games</span></a></div>
+    <div class="header-widgets">
+      <nav class="crumbs"><a href="../index.html">&larr; All games</a></nav>
+      <div id="notify-widget"></div>
+      <div id="profile-widget"></div>
+    </div>
+  </header>
+
+  <div class="game-shell">
+    <h2 style="margin-top:0;">&#127793; Ncho</h2>
+
+    <details class="rules" open>
+      <summary>How to play (Mancala-style rules)</summary>
+      This plays with the widely-known Mancala/Ayo capture rule, since exact
+      house rules for Ncho vary from family to family and estate to estate.
+      Each player owns the row of pits nearest them and the store to their
+      right. On your turn, pick one of your non-empty pits; its seeds are
+      sown one-by-one into each following pit (your own pits, your store,
+      then your opponent's pits &mdash; skipping their store). Land your last
+      seed in your own empty pit and you capture it plus everything opposite
+      it, straight into your store. Land it in your store and you go again.
+      When one side is empty, the other keeps whatever's left. Most seeds in
+      your store wins. If this isn't how you play it at home, tell me the
+      house rule and I'll adjust it.
+    </details>
+
+    <!-- SETUP -->
+    <div id="setup-screen">
+      <div class="field">
+        <label for="p1-name">Player 1 name</label>
+        <input type="text" id="p1-name" placeholder="Player 1" />
+      </div>
+      <div class="field">
+        <label for="p2-name">Player 2 name</label>
+        <input type="text" id="p2-name" placeholder="Player 2" />
+      </div>
+      <div class="field">
+        <label for="seeds">Seeds per pit</label>
+        <select id="seeds">
+          <option value="3">3</option>
+          <option value="4" selected>4</option>
+          <option value="6">6</option>
+        </select>
+      </div>
+      <div class="btn-row">
+        <button class="btn" id="start-btn">Start Game (same device)</button>
+      </div>
+    </div>
+
+    <!-- GAME -->
+    <div id="game-screen" style="display:none;">
+      <div class="scoreboard">
+        <div class="score-box" id="score-p1">
+          <div class="name"></div>
+          <div class="val">0</div>
+        </div>
+        <div class="score-box" id="score-p2">
+          <div class="name"></div>
+          <div class="val">0</div>
+        </div>
+      </div>
+      <p style="text-align:center;" id="turn-label"></p>
+
+      <div class="ncho-mid">
+        <div class="ncho-store" id="store-p2">0</div>
+        <div class="ncho-pits-col">
+          <div class="ncho-row reverse" id="row-p2"></div>
+          <div class="ncho-row" id="row-p1"></div>
+        </div>
+        <div class="ncho-store" id="store-p1">0</div>
+      </div>
+
+      <div class="feedback" id="feedback"></div>
+    </div>
+
+    <!-- END -->
+    <div id="end-screen" style="display:none;">
+      <h3 id="winner-line" style="text-align:center;"></h3>
+      <div class="scoreboard">
+        <div class="score-box" id="final-p1">
+          <div class="name"></div>
+          <div class="val">0</div>
+        </div>
+        <div class="score-box" id="final-p2">
+          <div class="name"></div>
+          <div class="val">0</div>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn" id="play-again">Play Again</button>
+        <a class="btn secondary" href="../index.html">Back to games</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/common.js"></script>
+<script src="../js/data.js"></script>
+<script src="../js/profiles.js"></script>
+<script src="../js/notify.js"></script>
+<script>BabeNotify.init("../");</script>
+<script src="ncho.js"></script>
+</body>
+</html>

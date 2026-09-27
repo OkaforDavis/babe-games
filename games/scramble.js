@@ -227,8 +227,9 @@
     return (active && active.name) || (BabeOnline.isHost ? p1NameInput.value.trim() : "") || "Player";
   }
 
-  playOnlineBtn.addEventListener("click", () => {
+  function openOnlineLobby(autoJoinCode) {
     BabeOnlineUI.openLobby({
+      autoJoinCode,
       onConnected: () => {
         BabeOnlineUI.close();
         beginOnlineSession();
@@ -240,6 +241,14 @@
         }
       },
     });
+  }
+
+  playOnlineBtn.addEventListener("click", () => openOnlineLobby());
+
+  document.addEventListener("DOMContentLoaded", () => {
+    const params = new URLSearchParams(location.search);
+    const roomFromLink = params.get("room");
+    if (roomFromLink) openOnlineLobby(roomFromLink);
   });
 
   function beginOnlineSession() {
