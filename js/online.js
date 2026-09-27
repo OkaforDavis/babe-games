@@ -12,28 +12,37 @@ const BabeOnline = (function () {
   let isHost = false;
   let roomCode = null;
   let connectTimeout = null;
+  let wakeLock = null;
+  let attemptNumber = 0;
   const dataListeners = [];
   const stateListeners = [];
 
   const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no 0/O/1/I ambiguity
   const ROOM_PREFIX = "babegames-";
-  const CONNECT_TIMEOUT_MS = 20000;
+  // International mobile-to-mobile connections (different countries,
+  // different carriers) can take a while to negotiate through a relay, so
+  // each attempt gets a generous window before we give up and try the next
+  // strategy.
+  const ATTEMPT_TIMEOUT_MS = 25000;
 
   // Plain STUN alone only works when both sides have "easy" NATs. Phones on
-  // mobile data or behind strict/carrier-grade NAT often can't punch a
-  // direct hole, so the handshake just hangs forever on "Connecting...".
-  // These TURN servers relay traffic instead, so a connection still forms
-  // even when a direct path isn't possible. (Open Relay Project's free,
-  // publicly documented test credentials.)
-  const ICE_CONFIG = {
-    iceServers: [
-      { urls: "stun:stun.l.google.com:19302" },
-      { urls: "stun:openrelay.metered.ca:80" },
-      { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
-      { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
-      { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
-    ],
-  };
+  // mobile data are very often behind carrier-grade NAT and/or firewalls
+  // that block direct WebRTC traffic entirely, so the handshake just hangs
+  // forever on "Connecting...". These TURN servers relay traffic instead,
+  // so a connection can still form even when no direct path is possible.
+  // (Open Relay Project's free, publicly documented test credentials.)
+  function iceConfig(forceRelay) {
+    return {
+      iceTransportPolicy: forceRelay ? "relay" : "all",
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:openrelay.metered.ca:80" },
+        { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
+        { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+        { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
+      ],
+    };
+  }
 
   function genCode() {
     let code = "";
@@ -58,20 +67,39 @@ const BabeOnline = (function () {
     }
   }
 
-  function armConnectTimeout() {
-    clearConnectTimeout();
-    connectTimeout = setTimeout(() => {
-      if (!conn || !conn.open) {
-        emitState("timeout");
-        disconnect();
-      }
-    }, CONNECT_TIMEOUT_MS);
+  async function requestWakeLock() {
+    try {
+      if ("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen");
+    } catch {
+      /* not supported / not allowed, connecting still works without it */
+    }
+  }
+
+  function releaseWakeLock() {
+    try {
+      if (wakeLock) wakeLock.release();
+    } catch {
+      /* already released */
+    }
+    wakeLock = null;
+  }
+
+  function teardownPeer() {
+    try {
+      if (conn) conn.close();
+      if (peer) peer.destroy();
+    } catch {
+      /* already closed */
+    }
+    conn = null;
+    peer = null;
   }
 
   function setupConnection(c) {
     conn = c;
     conn.on("open", () => {
       clearConnectTimeout();
+      releaseWakeLock();
       emitState("connected", { roomCode, isHost });
     });
     conn.on("data", (data) => emitData(data));
@@ -93,52 +121,104 @@ const BabeOnline = (function () {
     return "Something went wrong connecting. Please try again.";
   }
 
+  // Tries the normal (direct-or-relay, whichever ICE finds first) path
+  // first. If that doesn't open a connection in time, tears everything
+  // down and retries once more with TURN relay forced — this is what
+  // rescues connections on restrictive mobile/carrier networks where
+  // direct and even "auto" relay negotiation can silently stall.
   function createRoom() {
+    return attemptAsHost(false);
+  }
+
+  function attemptAsHost(forceRelay) {
+    attemptNumber += 1;
+    const myAttempt = attemptNumber;
     return new Promise((resolve, reject) => {
       if (typeof Peer === "undefined") return reject(new Error("PeerJS not loaded"));
-      roomCode = genCode();
+      roomCode = roomCode || genCode();
       isHost = true;
-      peer = new Peer(ROOM_PREFIX + roomCode, { config: ICE_CONFIG });
+      requestWakeLock();
+      peer = new Peer(ROOM_PREFIX + roomCode, { config: iceConfig(forceRelay) });
+
       peer.on("open", () => {
-        emitState("waiting", { code: roomCode });
+        emitState("waiting", { code: roomCode, retry: forceRelay });
         resolve(roomCode);
       });
       peer.on("connection", (c) => {
-        armConnectTimeout();
+        clearConnectTimeout();
         setupConnection(c);
       });
       peer.on("error", (err) => {
+        if (myAttempt !== attemptNumber) return;
+        releaseWakeLock();
         emitState("error", friendlyPeerError(err));
         reject(err);
       });
       peer.on("disconnected", () => {
-        emitState("peer-server-disconnected");
         if (peer && !peer.destroyed) peer.reconnect();
       });
+
+      clearConnectTimeout();
+      connectTimeout = setTimeout(() => {
+        if (myAttempt !== attemptNumber) return;
+        if (conn && conn.open) return;
+        if (!forceRelay) {
+          emitState("retrying");
+          teardownPeer();
+          attemptAsHost(true).catch(() => {});
+        } else {
+          releaseWakeLock();
+          emitState("timeout");
+          teardownPeer();
+        }
+      }, ATTEMPT_TIMEOUT_MS);
     });
   }
 
   function joinRoom(code) {
+    roomCode = code.trim().toUpperCase();
+    return attemptAsGuest(false);
+  }
+
+  function attemptAsGuest(forceRelay) {
+    attemptNumber += 1;
+    const myAttempt = attemptNumber;
     return new Promise((resolve, reject) => {
       if (typeof Peer === "undefined") return reject(new Error("PeerJS not loaded"));
       isHost = false;
-      roomCode = code.trim().toUpperCase();
-      peer = new Peer({ config: ICE_CONFIG });
+      requestWakeLock();
+      peer = new Peer({ config: iceConfig(forceRelay) });
+
       peer.on("open", () => {
         const c = peer.connect(ROOM_PREFIX + roomCode, { reliable: true });
-        armConnectTimeout();
         setupConnection(c);
         resolve();
       });
       peer.on("error", (err) => {
+        if (myAttempt !== attemptNumber) return;
         clearConnectTimeout();
+        releaseWakeLock();
         emitState("error", friendlyPeerError(err));
         reject(err);
       });
       peer.on("disconnected", () => {
-        emitState("peer-server-disconnected");
         if (peer && !peer.destroyed) peer.reconnect();
       });
+
+      clearConnectTimeout();
+      connectTimeout = setTimeout(() => {
+        if (myAttempt !== attemptNumber) return;
+        if (conn && conn.open) return;
+        if (!forceRelay) {
+          emitState("retrying");
+          teardownPeer();
+          attemptAsGuest(true).catch(() => {});
+        } else {
+          releaseWakeLock();
+          emitState("timeout");
+          teardownPeer();
+        }
+      }, ATTEMPT_TIMEOUT_MS);
     });
   }
 
@@ -155,15 +235,10 @@ const BabeOnline = (function () {
   }
 
   function disconnect() {
+    attemptNumber += 1; // invalidate any in-flight attempt callbacks
     clearConnectTimeout();
-    try {
-      if (conn) conn.close();
-      if (peer) peer.destroy();
-    } catch {
-      /* already closed */
-    }
-    conn = null;
-    peer = null;
+    releaseWakeLock();
+    teardownPeer();
     roomCode = null;
   }
 
@@ -202,6 +277,7 @@ const BabeOnlineUI = (function () {
       <div class="modal-box">
         <h3 style="margin-top:0;">Play Online</h3>
         <p style="color:var(--text-dim); font-size:0.9rem;">Connects you directly with one other person &mdash; not public matchmaking.</p>
+        <p style="color:var(--accent-2); font-size:0.8rem;">If you opened this from WhatsApp/Instagram, tap the menu and choose "Open in browser" first &mdash; in-app browsers often block this kind of connection.</p>
         <div id="online-idle">
           <div class="btn-row">
             <button class="btn small" id="online-create-btn">Create a room</button>
@@ -220,7 +296,7 @@ const BabeOnlineUI = (function () {
           <div class="btn-row" style="justify-content:center;">
             <button class="btn secondary small" id="online-copy-link-btn">Copy invite link</button>
           </div>
-          <p style="color:var(--text-dim); font-size:0.85rem;" id="online-status-text">Waiting for them to join&hellip; keep this tab open.</p>
+          <p style="color:var(--text-dim); font-size:0.85rem;" id="online-status-text">Waiting for them to join&hellip; keep this tab open and screen on.</p>
           <div class="btn-row" style="justify-content:center;">
             <button class="btn secondary small" id="online-cancel-btn">Cancel</button>
           </div>
@@ -290,8 +366,11 @@ const BabeOnlineUI = (function () {
         if (onConnectedCallback) setTimeout(() => onConnectedCallback(detail), 600);
       } else if (state === "error") {
         showError(detail);
+      } else if (state === "retrying") {
+        const statusEl = document.getElementById("online-status-text");
+        if (statusEl) statusEl.textContent = "Still working on it — trying a relay connection (this can take a bit longer on mobile data)…";
       } else if (state === "timeout") {
-        showError("Couldn't connect — make sure you're both online and the room code is fresh, then try again.");
+        showError("Couldn't connect after two tries. Make sure you're both on a working internet connection (WiFi is usually more reliable than mobile data for this), that the room code is fresh, and that neither of you opened the link inside WhatsApp/Instagram's in-app browser.");
       } else if (state === "disconnected") {
         if (onDisconnectedCallback) onDisconnectedCallback();
       }
@@ -304,7 +383,7 @@ const BabeOnlineUI = (function () {
     try {
       const code = await BabeOnline.createRoom();
       document.getElementById("online-code-display").textContent = code;
-      document.getElementById("online-status-text").textContent = "Waiting for them to join… keep this tab open.";
+      document.getElementById("online-status-text").textContent = "Waiting for them to join… keep this tab open and screen on.";
     } catch (err) {
       showError(typeof err === "string" ? err : "Couldn't create a room. Try again.");
     }
