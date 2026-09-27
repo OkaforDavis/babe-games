@@ -97,8 +97,9 @@ const BabeGame = (function () {
 
     function syncTimer() {
       const wants = authority() && !!rules.tick && !!rules.wantsTimer && rules.wantsTimer(state);
-      if (wants && !timerHandle) timerHandle = setInterval(onTick, 1000);
-      if (!wants) stopTimer();
+      const hidden = typeof document !== "undefined" && document.hidden;
+      if (wants && !hidden && !timerHandle) timerHandle = setInterval(onTick, 1000);
+      if (!wants || hidden) stopTimer();
     }
 
     function stopTimer() {
@@ -111,6 +112,31 @@ const BabeGame = (function () {
       const next = rules.tick(state);
       if (next) commit(next);
       else syncTimer();
+    }
+
+    // Phones suspend a backgrounded tab: intervals stop firing and animation
+    // frames never run, which used to leave a game wedged half-finished when
+    // you came back. The clock pauses while you're away rather than running
+    // down behind your back, and everything is redrawn on return so the
+    // board is always live again.
+    function handleVisibility() {
+      if (typeof document === "undefined") return;
+      if (document.hidden) {
+        stopTimer();
+        if (spec.onHidden) spec.onHidden(view());
+        return;
+      }
+      if (!state) return;
+      render();
+      syncTimer();
+    }
+
+    if (typeof document !== "undefined" && document.addEventListener) {
+      document.addEventListener("visibilitychange", handleVisibility);
+    }
+    if (typeof window !== "undefined" && window.addEventListener) {
+      window.addEventListener("pageshow", handleVisibility);
+      window.addEventListener("focus", handleVisibility);
     }
 
     // ---- local play ----
@@ -143,6 +169,10 @@ const BabeGame = (function () {
         if (msg.t === "hello") {
           peerName = String(msg.name || "Player").slice(0, 24);
           if (spec.onPeerReady) spec.onPeerReady(peerName, view());
+          // Someone joining while a game is already running is a rejoin
+          // after a dropped connection — send them the board so they pick
+          // up exactly where things were.
+          if (isHost && state && !rules.isOver(state)) broadcast();
           return;
         }
         if (msg.t === "state" && !isHost) {

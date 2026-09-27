@@ -587,10 +587,14 @@
       ui.handleConnected();
     },
     onPeerReady() { ui.handlePeerReady(); },
-    onPeerLost() {
+    onPeerLost(view) {
       ui.handlePeerLost();
-      BabeGameUI.showScreen("setup-screen");
-      p2Field.style.display = "block";
+      // The host keeps the board so the game survives a dropped connection;
+      // the other side needs the setup screen to rejoin from.
+      if (!view.isHost) {
+        BabeGameUI.showScreen("setup-screen");
+        p2Field.style.display = "block";
+      }
     },
   });
 
@@ -610,8 +614,11 @@
     ],
   });
 
-  // Tap the board to jump to the end of a long relay instead of waiting.
-  stage.addEventListener("click", () => {
+  // Abandons a sowing in progress and snaps the board to where it really
+  // is. Used both for tap-to-skip and when the app goes to the background,
+  // where animation frames stop firing entirely and would otherwise leave
+  // the board stuck mid-turn and unclickable.
+  function finishAnimationNow() {
     if (!animating) return;
     animToken += 1;
     animating = false;
@@ -623,6 +630,13 @@
       pendingOver = null;
       show();
     }
+  }
+
+  // Tap the board to jump to the end of a long relay instead of waiting.
+  stage.addEventListener("click", finishAnimationNow);
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) finishAnimationNow();
   });
 
   flipBtn.addEventListener("click", () => {

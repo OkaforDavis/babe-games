@@ -103,7 +103,17 @@ const BabeGameUI = (function () {
         renderLobbyBar();
       },
       handlePeerLost() {
-        setBar("Your partner disconnected. You can start a new room from the setup screen.", "bad");
+        // The game isn't thrown away: the host keeps the board, and whoever
+        // dropped can come back in on the same code and carry on.
+        const code = BabeOnline.roomCode;
+        if (game.isHost && code) {
+          setBar(
+            `Connection dropped. The game is still here &mdash; they can rejoin with code <strong>${escapeHtml(code)}</strong>.`,
+            "bad"
+          );
+        } else {
+          setBar("Connection dropped. Tap Play Online and enter the same code to pick up where you left off.", "bad");
+        }
       },
     };
   }

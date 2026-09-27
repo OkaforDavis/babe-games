@@ -326,9 +326,10 @@
       ui.handleConnected();
     },
     onPeerReady() { ui.handlePeerReady(); },
-    onPeerLost() {
+    onPeerLost(view) {
       stopTicker();
       ui.handlePeerLost();
+      if (view.isHost) return;
       BabeGameUI.showScreen("setup-screen");
       uploadField.style.display = "block";
       uploadNote.style.display = "none";

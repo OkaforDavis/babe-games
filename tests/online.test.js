@@ -238,6 +238,43 @@ test("online: the Mancala-style variant runs through the same engine", () => {
   s.stop();
 });
 
+test("online: rejoining after a dropped connection picks the game back up", () => {
+  const s = connectPair(Ncho, { seedsPerPit: 4, variant: "four" });
+  s.host.dispatch({ type: "sow", pit: 3 });
+  s.sync();
+  const boardBefore = JSON.stringify(s.seen.host.pits);
+  const matchBefore = s.seen.host.matchId;
+
+  // The guest drops off and comes back on the same room — their device
+  // knows nothing, so the host has to hand the board back over.
+  s.seen.guest = null;
+  s.guest.startOnline({ myName: "Emeka" });
+  s.guestBox.lobby.onConnected();
+  s.sync();
+
+  assert.ok(s.seen.guest, "the guest got a board back");
+  assert.strictEqual(JSON.stringify(s.seen.guest.pits), boardBefore, "and it is the same board");
+  assert.strictEqual(s.seen.guest.matchId, matchBefore, "still the same match, not a fresh one");
+  s.stop();
+});
+
+test("online: a finished game is not re-sent to someone joining afterwards", () => {
+  const s = connectPair(Ncho, { seedsPerPit: 4, variant: "four" });
+  let guard = 0;
+  while (!s.seen.host.over && guard++ < 400) {
+    const state = s.seen.host;
+    const moves = Ncho.legalMoves(state, state.turn);
+    if (!moves.length) break;
+    (state.turn === 0 ? s.host : s.guest).dispatch({ type: "sow", pit: moves[0] });
+    s.sync();
+  }
+  assert.strictEqual(s.seen.host.over, true);
+  const sentBefore = s.hostBox.outbox.length;
+  s.hostBox.deliver({ t: "hello", name: "Someone" });
+  assert.strictEqual(s.hostBox.outbox.length, sentBefore, "nothing is broadcast for a finished game");
+  s.stop();
+});
+
 // ---------------- per game ----------------
 
 test("online: dots and boxes keeps both boards identical", () => {

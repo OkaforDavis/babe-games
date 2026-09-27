@@ -3,7 +3,7 @@
 // location, so this works whether the site sits at a domain root or a
 // GitHub Pages project subpath.
 
-const CACHE_VERSION = "babe-games-v6";
+const CACHE_VERSION = "babe-games-v7";
 const SHELL_FILES = [
   "./",
   "index.html",
@@ -55,23 +55,69 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-self.addEventListener("fetch", (event) => {
-  if (event.request.method !== "GET") return;
+const NETWORK_TIMEOUT_MS = 3500;
+const ASSET_PATTERN = /\.(png|jpe?g|gif|svg|ico|webp|woff2?)$/i;
 
-  event.respondWith(
-    caches.match(event.request).then((cached) => {
-      const network = fetch(event.request)
-        .then((response) => {
-          if (response && response.ok) {
-            const copy = response.clone();
-            caches.open(CACHE_VERSION).then((cache) => cache.put(event.request, copy));
-          }
-          return response;
-        })
-        .catch(() => cached);
-      return cached || network;
-    })
-  );
+function putInCache(request, response) {
+  const copy = response.clone();
+  caches.open(CACHE_VERSION).then((cache) => cache.put(request, copy)).catch(() => {});
+}
+
+// Pages, scripts and styles come from the network first so an update is
+// picked up straight away — serving these from the cache first meant a
+// phone could keep running an old copy of the game indefinitely. The cache
+// is still there as a fallback, and a slow connection falls back to it
+// rather than hanging.
+function networkFirst(request) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (response) => {
+      if (settled) return;
+      settled = true;
+      resolve(response);
+    };
+
+    const timer = setTimeout(() => {
+      caches.match(request).then((cached) => {
+        if (cached) done(cached);
+      });
+    }, NETWORK_TIMEOUT_MS);
+
+    fetch(request)
+      .then((response) => {
+        clearTimeout(timer);
+        if (response && response.ok) putInCache(request, response);
+        done(response);
+      })
+      .catch(() => {
+        clearTimeout(timer);
+        caches.match(request).then((cached) => {
+          done(cached || new Response("Offline", { status: 503, statusText: "Offline" }));
+        });
+      });
+  });
+}
+
+// Pictures and icons never change under the same name, so cache is fine.
+function cacheFirst(request) {
+  return caches.match(request).then((cached) => {
+    if (cached) return cached;
+    return fetch(request).then((response) => {
+      if (response && response.ok) putInCache(request, response);
+      return response;
+    });
+  });
+}
+
+self.addEventListener("fetch", (event) => {
+  const request = event.request;
+  if (request.method !== "GET") return;
+
+  const url = new URL(request.url);
+  // Leave anything cross-origin (the PeerJS library, its signalling) alone.
+  if (url.origin !== self.location.origin) return;
+
+  event.respondWith(ASSET_PATTERN.test(url.pathname) ? cacheFirst(request) : networkFirst(request));
 });
 
 self.addEventListener("notificationclick", (event) => {

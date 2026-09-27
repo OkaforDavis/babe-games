@@ -355,10 +355,12 @@
       ui.handleConnected();
     },
     onPeerReady() { ui.handlePeerReady(); },
-    onPeerLost() {
+    onPeerLost(view) {
       ui.handlePeerLost();
-      BabeGameUI.showScreen("setup-screen");
-      localPlayersField.style.display = "block";
+      if (!view.isHost) {
+        BabeGameUI.showScreen("setup-screen");
+        localPlayersField.style.display = "block";
+      }
     },
   });
 
