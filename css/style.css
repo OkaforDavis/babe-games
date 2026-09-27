@@ -436,6 +436,14 @@ label { font-size: 0.85rem; color: var(--text-dim); display: block; margin-botto
   0%, 100% { stroke-opacity: 0.35; }
   50% { stroke-opacity: 1; }
 }
+/* the pit's number lights up as it changes, so it's easy to count along */
+.ncho-stage text.count-pop { animation: countPop 0.45s ease-out; }
+@keyframes countPop {
+  0% { fill: #ffd23f; }
+  60% { fill: #ffd23f; }
+  100% { fill: #fdf1d6; }
+}
+
 .ncho-stage .sow-flash { animation: sowFlash 0.5s ease-out; }
 @keyframes sowFlash {
   0% { filter: brightness(2.1) drop-shadow(0 0 6px rgba(255, 210, 63, 0.9)); }

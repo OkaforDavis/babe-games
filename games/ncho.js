@@ -3,6 +3,15 @@
   const MAX_PIT_SEEDS_DRAWN = 19;
   const HOUSES = NchoRules.constants;
 
+  // Sowing is paced so you can count along with it, the way you would at a
+  // real board. Short turns get the full unhurried beat; a long relay speeds
+  // the hand up so the turn still finishes in reasonable time.
+  const COUNTING_PACE_MS = 300;   // a comfortable "one... two... three"
+  const FASTEST_PACE_MS = 110;
+  const MAX_TURN_MS = 6500;
+  const CAPTURE_BEAT_MS = 720;    // flash, fly to the house, settle
+  const PICKUP_BEAT_MS = 220;
+
   const stage = document.getElementById("board-stage");
   const turnBanner = document.getElementById("turn-banner");
   const boardNote = document.getElementById("board-note");
@@ -102,14 +111,16 @@
       return { viewBox: "0 0 900 360", w: 900, h: 360, pits, houses, mine, theirs, myHouse, theirHouse, portrait };
     }
 
-    const R = 52;
+    // 6 pits of radius 46 spaced 96 apart clears both the stores and each
+    // other inside an 840-tall board.
+    const R = 46;
     for (let i = 0; i < 6; i++) {
-      const cy = 190 + i * 96;
+      const cy = 176 + i * 96;
       pits[mine[i]] = { cx: 112, cy, r: R, bx: 112 - R - 18, by: cy + 6 };
       pits[theirs[i]] = { cx: 248, cy, r: R, bx: 248 + R + 18, by: cy + 6 };
     }
-    houses[theirHouse] = { cx: 180, cy: 78, rx: 122, ry: 44, bx: 180, by: 78 + 44 + 24 };
-    houses[myHouse] = { cx: 180, cy: 762, rx: 122, ry: 44, bx: 180, by: 762 - 44 - 14 };
+    houses[theirHouse] = { cx: 180, cy: 78, rx: 122, ry: 42, bx: 180, by: 78 + 42 + 22 };
+    houses[myHouse] = { cx: 180, cy: 762, rx: 122, ry: 42, bx: 180, by: 762 - 42 - 14 };
     return { viewBox: "0 0 360 840", w: 360, h: 840, pits, houses, mine, theirs, myHouse, theirHouse, portrait };
   }
 
@@ -201,7 +212,7 @@
       }));
       const seeds = svgEl("g", { class: "seeds" });
       g.appendChild(seeds);
-      const label = makeLabel(pos.bx, pos.by, 20);
+      const label = makeLabel(pos.bx, pos.by, 23);
       g.appendChild(label);
       svg.appendChild(g);
       pitNodes[idx] = { seeds, label, pos, isHouse: true };
@@ -227,7 +238,7 @@
 
       const seeds = svgEl("g", { class: "seeds" });
       g.appendChild(seeds);
-      const label = makeLabel(pos.bx, pos.by, 15);
+      const label = makeLabel(pos.bx, pos.by, 17);
       g.appendChild(label);
 
       const hit = svgEl("circle", {
@@ -264,9 +275,14 @@
     return text;
   }
 
-  function paintPit(idx, count) {
+  function paintPit(idx, count, pop) {
     const node = pitNodes[idx];
     if (!node) return;
+    if (pop) {
+      node.label.classList.remove("count-pop");
+      void node.label.getBoundingClientRect();
+      node.label.classList.add("count-pop");
+    }
     node.seeds.innerHTML = "";
     const spots = node.isHouse
       ? houseSpots(count, node.pos.rx, node.pos.ry, idx * 31)
@@ -330,11 +346,21 @@
     const counts = move.before.slice();
     const steps = move.steps || [];
     const drops = steps.filter((s) => s.t === "drop").length;
-    // Long relays get a quicker hand so the whole turn stays watchable.
-    const stepMs = Math.max(28, Math.min(130, 3500 / Math.max(1, drops)));
-    const soundEvery = Math.max(1, Math.ceil(drops / 14));
+
+    // Budget the whole turn, not just the seeds — a relay with several
+    // captures was otherwise running to a quarter of a minute.
+    const captureCount = steps.filter((s) => s.t === "capture").length;
+    const pickupCount = steps.filter((s) => s.t === "pickup").length;
+    const budget = MAX_TURN_MS - captureCount * CAPTURE_BEAT_MS - pickupCount * PICKUP_BEAT_MS;
+    const pace = Math.max(FASTEST_PACE_MS, Math.min(COUNTING_PACE_MS, budget / Math.max(1, drops)));
+    const flightMs = pace * 0.62;        // the seed travels...
+    const settleMs = pace - flightMs;    // ...then rests a beat before the next
+    // At a countable pace every seed gets its own tick; a fast relay thins
+    // them out so it doesn't turn into a buzz.
+    const soundEvery = pace >= 150 ? 1 : Math.max(1, Math.ceil(drops / 16));
 
     let cursor = move.from;
+    let hand = 0;
     let dropIndex = 0;
 
     for (let i = 0; i < steps.length; i++) {
@@ -343,36 +369,81 @@
 
       if (step.t === "pickup") {
         counts[step.pit] = 0;
-        paintPit(step.pit, 0);
+        hand = step.count;
+        paintPit(step.pit, 0, true);
         cursor = step.pit;
-        if (i > 0) {
-          // a beat so you can see the pit being scooped up again
-          await wait(Math.min(200, stepMs * 2));
-        }
+        showHand(cursor, hand);
+        // a clear beat on the scoop, so a relay reads as "picked it up again"
+        await wait(i === 0 ? Math.min(380, pace * 1.15) : Math.min(460, pace * 1.4));
       } else if (step.t === "drop") {
-        await flySeed(cursor, step.pit, stepMs);
+        await flySeed(cursor, step.pit, flightMs);
         if (token !== animToken) return false;
         counts[step.pit] += 1;
-        paintPit(step.pit, counts[step.pit]);
+        hand = Math.max(0, hand - 1);
+        paintPit(step.pit, counts[step.pit], true);
+        cursor = step.pit;
+        showHand(cursor, hand);
         if (dropIndex % soundEvery === 0) BabeNotify.playSound("tick");
         dropIndex += 1;
-        cursor = step.pit;
+        await wait(settleMs);
       } else if (step.t === "capture") {
-        const house = step.by === 0 ? HOUSES.P1_HOUSE : HOUSES.P2_HOUSE;
+        hideHand();
         flashPit(step.pit);
-        await wait(170);
+        await wait(250);
         if (token !== animToken) return false;
+        const house = step.by === 0 ? HOUSES.P1_HOUSE : HOUSES.P2_HOUSE;
         counts[step.pit] = Math.max(0, counts[step.pit] - step.seeds);
         counts[house] += step.seeds;
         paintPit(step.pit, counts[step.pit]);
-        await flySeed(step.pit, house, 240);
+        await flySeed(step.pit, house, 300);
         if (token !== animToken) return false;
-        paintPit(house, counts[house]);
+        paintPit(house, counts[house], true);
         BabeNotify.playSound("success");
+        await wait(170);
       }
     }
 
+    hideHand();
     return token === animToken;
+  }
+
+  // A little marker travelling with the sowing showing how many seeds are
+  // still in the hand, so you can count them down.
+  function showHand(atPit, remaining) {
+    if (!svg) return;
+    let group = svg.querySelector(".hand-marker");
+    if (remaining <= 0) return hideHand();
+    const pos = centerOf(atPit);
+    // Sits outside the pit: beside it in portrait (the rows are stacked
+    // tightly), above it in landscape.
+    const offset = layout && layout.portrait
+      ? { x: pos.x < 180 ? -70 : 70, y: 0 }
+      : { x: 0, y: -72 };
+
+    if (!group) {
+      group = svgEl("g", { class: "hand-marker" });
+      const bubble = svgEl("circle", { r: 17, fill: "#1a1025", stroke: "#ffd23f", "stroke-width": 2.5, opacity: 0.95 });
+      const text = svgEl("text", {
+        "text-anchor": "middle", "dominant-baseline": "central",
+        "font-size": 16, "font-weight": "800", fill: "#ffd23f",
+      });
+      group.appendChild(bubble);
+      group.appendChild(text);
+      svg.appendChild(group);
+    }
+    group.style.display = "";
+    group.querySelector("circle").setAttribute("cx", pos.x + offset.x);
+    group.querySelector("circle").setAttribute("cy", pos.y + offset.y);
+    const text = group.querySelector("text");
+    text.setAttribute("x", pos.x + offset.x);
+    text.setAttribute("y", pos.y + offset.y);
+    text.textContent = remaining;
+  }
+
+  function hideHand() {
+    if (!svg) return;
+    const group = svg.querySelector(".hand-marker");
+    if (group) group.style.display = "none";
   }
 
   // ---------- rendering ----------
@@ -537,6 +608,21 @@
       p1Name.value.trim() || "Player 1",
       p2Name.value.trim() || "Player 2",
     ],
+  });
+
+  // Tap the board to jump to the end of a long relay instead of waiting.
+  stage.addEventListener("click", () => {
+    if (!animating) return;
+    animToken += 1;
+    animating = false;
+    hideHand();
+    const state = game.state;
+    if (state) buildBoard(state.pits, state, game.view);
+    if (pendingOver) {
+      const show = pendingOver;
+      pendingOver = null;
+      show();
+    }
   });
 
   flipBtn.addEventListener("click", () => {
