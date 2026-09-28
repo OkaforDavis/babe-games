@@ -3,13 +3,14 @@
 // location, so this works whether the site sits at a domain root or a
 // GitHub Pages project subpath.
 
-const CACHE_VERSION = "babe-games-v7";
+const CACHE_VERSION = "babe-games-v8";
 const SHELL_FILES = [
   "./",
   "index.html",
   "manifest.json",
   "css/style.css",
   "js/common.js",
+  "js/celebrate.js",
   "js/data.js",
   "js/profiles.js",
   "js/notify.js",

@@ -6,6 +6,7 @@
   const feedback = document.getElementById("feedback");
   const quitBtn = document.getElementById("quit-btn");
   const winnerLine = document.getElementById("winner-line");
+  const resultSubtitle = document.getElementById("result-subtitle");
   const rematchBtn = document.getElementById("rematch-btn");
 
   const p1Name = document.getElementById("p1-name");
@@ -292,16 +293,34 @@
       });
 
       const solo = state.names.length === 1;
-      winnerLine.textContent = solo
-        ? "Solved! \u{1F389}"
-        : view.isOnline
-        ? state.winner === view.mySlot ? "You win the race! \u{1F3C6}" : `${state.names[state.winner]} got there first!`
-        : `${state.names[state.winner]} wins! \u{1F3C6}`;
-
-      BabeNotify.notify("Puzzle finished!", winnerLine.textContent, { sound: "win", basePath: "../" });
-
       const mySlotIdx = view.isOnline ? view.mySlot : 0;
-      const ms = state.finished[mySlotIdx];
+      const myMs = state.finished[mySlotIdx];
+
+      let result;
+      if (solo) {
+        result = {
+          outcome: "win",
+          title: "Solved!",
+          subtitle: myMs != null ? `${formatSeconds(Math.round(myMs / 1000))} and ${state.moves[mySlotIdx]} swaps.` : "",
+        };
+      } else if (state.winner === mySlotIdx) {
+        result = { outcome: "win", title: "You got there first!", subtitle: "Nicely done." };
+      } else {
+        const theirs = state.finished[state.winner];
+        const mine = state.progress[mySlotIdx];
+        result = {
+          outcome: "close",
+          title: `${state.names[state.winner]} got there first`,
+          subtitle: theirs != null
+            ? `They finished in ${formatSeconds(Math.round(theirs / 1000))}, and you had ${mine} of ${state.n * state.n} in place. Go again?`
+            : "Go again?",
+        };
+      }
+      BabeCelebrate.show({ ...result, titleEl: winnerLine, subtitleEl: resultSubtitle });
+
+      BabeNotify.notify("Puzzle finished!", result.title, { sound: "win", basePath: "../" });
+
+      const ms = myMs;
       if (ms != null) {
         const seconds = Math.round(ms / 1000);
         pushHighScore("puzzle", {

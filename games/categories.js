@@ -30,6 +30,7 @@
   const summaryWait = document.getElementById("summary-wait");
 
   const winnerLine = document.getElementById("winner-line");
+  const resultSubtitle = document.getElementById("result-subtitle");
   const rematchBtn = document.getElementById("rematch-btn");
 
   const p1Name = document.getElementById("p1-name");
@@ -334,12 +335,18 @@
       renderSeats(state, view, finalRow, state.totals);
       const best = Math.max(...state.totals);
       const leaders = state.names.filter((_, i) => state.totals[i] === best);
-      winnerLine.textContent = leaders.length > 1
-        ? `It's a tie between ${leaders.join(" & ")}!`
-        : view.isOnline
-        ? state.winner === view.mySlot ? "You win! \u{1F3C6}" : `${leaders[0]} wins!`
-        : `${leaders[0]} wins! \u{1F3C6}`;
-      BabeNotify.notify("Game over!", winnerLine.textContent, { sound: "win", basePath: "../" });
+      const result = leaders.length > 1
+        ? { outcome: "tie", title: `Level between ${leaders.join(" & ")}!`, subtitle: "Another letter to settle it?" }
+        : BabeCelebrate.describe({
+            isOnline: view.isOnline,
+            mySlot: view.mySlot,
+            winner: state.winner,
+            names: state.names,
+            scores: state.totals.length === 2 ? state.totals : null,
+            unit: "points",
+          });
+      BabeCelebrate.show({ ...result, titleEl: winnerLine, subtitleEl: resultSubtitle });
+      BabeNotify.notify("Game over!", result.title, { sound: "win", basePath: "../" });
       pushHighScore("categories", { players: state.names.join(", "), score: best });
       rematchBtn.style.display = view.isOnline && !view.isHost ? "none" : "inline-block";
       BabeGameUI.showScreen("end-screen");

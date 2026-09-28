@@ -8,6 +8,7 @@
   const submitBtn = document.getElementById("submit-word");
   const chainLog = document.getElementById("chain-log");
   const winnerLine = document.getElementById("winner-line");
+  const resultSubtitle = document.getElementById("result-subtitle");
   const chainLength = document.getElementById("chain-length");
   const rematchBtn = document.getElementById("rematch-btn");
 
@@ -146,13 +147,22 @@
     },
     onOver(state, view) {
       const words = state.log.filter((l) => l.kind === "word").length;
-      winnerLine.textContent = state.winner < 0
-        ? "Nobody left standing!"
-        : view.isOnline
-        ? state.winner === view.mySlot ? "You win! \u{1F3C6}" : `${state.names[state.winner]} wins!`
-        : `${state.names[state.winner]} wins! \u{1F3C6}`;
-      chainLength.textContent = `The chain survived ${words} word${words === 1 ? "" : "s"}.`;
-      BabeNotify.notify("Game over!", winnerLine.textContent, { sound: "win", basePath: "../" });
+      const result = state.winner < 0
+        ? { outcome: "tie", title: "Nobody left standing!", subtitle: "" }
+        : BabeCelebrate.describe({
+            isOnline: view.isOnline,
+            mySlot: view.mySlot,
+            winner: state.winner,
+            names: state.names,
+          });
+      BabeCelebrate.show({
+        ...result,
+        subtitle: `The chain survived ${words} word${words === 1 ? "" : "s"}. ${result.subtitle || ""}`.trim(),
+        titleEl: winnerLine,
+        subtitleEl: resultSubtitle,
+      });
+      chainLength.textContent = "";
+      BabeNotify.notify("Game over!", result.title, { sound: "win", basePath: "../" });
       pushHighScore("chain", { players: state.names.join(", "), score: words });
       rematchBtn.style.display = view.isOnline && !view.isHost ? "none" : "inline-block";
       BabeGameUI.showScreen("end-screen");

@@ -9,6 +9,7 @@
   const submitBtn = document.getElementById("submit-guess");
   const nextBtn = document.getElementById("next-round");
   const winnerLine = document.getElementById("winner-line");
+  const resultSubtitle = document.getElementById("result-subtitle");
   const rematchBtn = document.getElementById("rematch-btn");
 
   const p1Name = document.getElementById("p1-name");
@@ -124,12 +125,16 @@
         seat.querySelector(".seat-score").textContent = state.scores[slot];
         seat.classList.toggle("you", view.isOnline && slot === view.mySlot);
       });
-      winnerLine.textContent = state.winner === -1
-        ? "It's a tie!"
-        : view.isOnline
-        ? state.winner === view.mySlot ? "You win! \u{1F3C6}" : `${state.names[state.winner]} wins!`
-        : `${state.names[state.winner]} wins! \u{1F3C6}`;
-      BabeNotify.notify("Game over!", winnerLine.textContent, { sound: "win", basePath: "../" });
+      const result = BabeCelebrate.describe({
+        isOnline: view.isOnline,
+        mySlot: view.mySlot,
+        winner: state.winner,
+        names: state.names,
+        scores: state.scores,
+        unit: "points",
+      });
+      BabeCelebrate.show({ ...result, titleEl: winnerLine, subtitleEl: resultSubtitle });
+      BabeNotify.notify("Game over!", result.title, { sound: "win", basePath: "../" });
       pushHighScore("scramble", { players: state.names.join(" vs "), score: Math.max(...state.scores) });
       rematchBtn.style.display = view.isOnline && !view.isHost ? "none" : "inline-block";
       BabeGameUI.showScreen("end-screen");

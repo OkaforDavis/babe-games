@@ -19,6 +19,7 @@
   const boardNote = document.getElementById("board-note");
   const feedback = document.getElementById("feedback");
   const winnerLine = document.getElementById("winner-line");
+  const resultSubtitle = document.getElementById("result-subtitle");
   const rematchBtn = document.getElementById("rematch-btn");
   const flipBtn = document.getElementById("flip-board");
   const p1Name = document.getElementById("p1-name");
@@ -248,7 +249,14 @@
         fill: "transparent",
         class: "pit-hit" + (playable.has(idx) ? " playable" : ""),
       });
-      if (playable.has(idx)) hit.addEventListener("click", () => onPitClick(idx));
+      if (playable.has(idx)) {
+        hit.addEventListener("click", (event) => {
+          // Without this the click carries on up to the tap-to-skip handler
+          // on the stage and cancels the very animation it just started.
+          event.stopPropagation();
+          onPitClick(idx);
+        });
+      }
       g.appendChild(hit);
 
       svg.appendChild(g);
@@ -619,13 +627,17 @@
           seat.querySelector(".seat-score").textContent = scores[slot];
           seat.classList.toggle("you", view.isOnline && slot === view.mySlot);
         });
-        winnerLine.textContent = state.winner === -1
-          ? "It's a tie!"
-          : view.isOnline
-          ? state.winner === view.mySlot ? "You win! \u{1F3C6}" : `${state.names[state.winner]} wins!`
-          : `${state.names[state.winner]} wins! \u{1F3C6}`;
+        const result = BabeCelebrate.describe({
+          isOnline: view.isOnline,
+          mySlot: view.mySlot,
+          winner: state.winner,
+          names: state.names,
+          scores,
+          unit: "seeds",
+        });
+        BabeCelebrate.show({ ...result, titleEl: winnerLine, subtitleEl: resultSubtitle });
 
-        BabeNotify.notify("Game over!", winnerLine.textContent, { sound: "win", basePath: "../" });
+        BabeNotify.notify("Game over!", result.title, { sound: "win", basePath: "../" });
         pushHighScore("ncho", { players: state.names.join(" vs "), score: Math.max(...scores) });
 
         rematchBtn.style.display = view.isOnline && !view.isHost ? "none" : "inline-block";

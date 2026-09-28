@@ -1,54 +1,42 @@
-// Peer-to-peer connection layer for playing with one other specific person
-// on a different device. Uses PeerJS's free public broker only to introduce
-// the two browsers to each other (signaling); actual game data then flows
-// directly device-to-device over WebRTC, not through any server we run.
+// Connecting the two players.
 //
-// This is NOT public matchmaking — you share a short room code (or link)
+// This used to be WebRTC peer-to-peer only, which turns out to be the wrong
+// tool here: two phones on mobile data are usually behind carrier-grade NAT,
+// which blocks a direct connection, and the free relay servers that would
+// rescue it are unreliable. So the primary transport is now a plain outbound
+// secure WebSocket to a public message broker — the same kind of connection
+// as loading a web page, which carriers don't interfere with. Peer-to-peer
+// is kept as a fallback for when no broker can be reached.
+//
+// Either way this is not public matchmaking: you share a short room code
 // with the one person you want to play with.
 
 const BabeOnline = (function () {
-  let peer = null;
-  let conn = null;
+  const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no 0/O/1/I ambiguity
+  const TOPIC_PREFIX = "babegames/v1";
+
+  // Tried in order; a blocked port on one network is usually open on another.
+  const BROKERS = [
+    "wss://broker.hivemq.com:8884/mqtt",
+    "wss://broker.emqx.io:8084/mqtt",
+    "wss://test.mosquitto.org:8081/mqtt",
+  ];
+
+  const BROKER_CONNECT_MS = 9000;
+  const GUEST_WAIT_MS = 15000;
+  const P2P_CONNECT_MS = 20000;
+
+  let transport = null;
   let isHost = false;
   let roomCode = null;
-  let connectTimeout = null;
-  let wakeLock = null;
-  let attemptNumber = 0;
+  let transportName = null;
+  let lastStatus = "";
   const dataListeners = [];
   const stateListeners = [];
 
-  const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no 0/O/1/I ambiguity
-  const ROOM_PREFIX = "babegames-";
-  // International mobile-to-mobile connections (different countries,
-  // different carriers) can take a while to negotiate through a relay, so
-  // each attempt gets a generous window before we give up and try the next
-  // strategy.
-  const ATTEMPT_TIMEOUT_MS = 25000;
-
-  // Plain STUN alone only works when both sides have "easy" NATs. Phones on
-  // mobile data are very often behind carrier-grade NAT and/or firewalls
-  // that block direct WebRTC traffic entirely, so the handshake just hangs
-  // forever on "Connecting...". These TURN servers relay traffic instead,
-  // so a connection can still form even when no direct path is possible.
-  // (Open Relay Project's free, publicly documented test credentials.)
-  function iceConfig(forceRelay) {
-    return {
-      iceTransportPolicy: forceRelay ? "relay" : "all",
-      iceServers: [
-        { urls: "stun:stun.l.google.com:19302" },
-        { urls: "stun:openrelay.metered.ca:80" },
-        { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
-        { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
-        { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
-      ],
-    };
-  }
-
   function genCode() {
     let code = "";
-    for (let i = 0; i < 5; i++) {
-      code += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
-    }
+    for (let i = 0; i < 5; i++) code += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
     return code;
   }
 
@@ -60,193 +48,312 @@ const BabeOnline = (function () {
     dataListeners.forEach((cb) => cb(data));
   }
 
-  function clearConnectTimeout() {
-    if (connectTimeout) {
-      clearTimeout(connectTimeout);
-      connectTimeout = null;
-    }
+  function setStatus(text) {
+    lastStatus = text;
+    emitState("status", text);
   }
 
-  async function requestWakeLock() {
-    try {
-      if ("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen");
-    } catch {
-      /* not supported / not allowed, connecting still works without it */
+  // ---------------------------------------------------------------- relay
+
+  // Both players subscribe to one topic named after the room code and talk
+  // over it. Presence is announced explicitly so each side knows the other
+  // has actually arrived.
+  function createRelayTransport(brokerUrl) {
+    const myId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+    let client = null;
+    let opened = false;
+    let greeted = false;
+    let stopped = false;
+    let handlers = {};
+    const topic = `${TOPIC_PREFIX}/${roomCode}/bus`;
+
+    function publish(payload) {
+      if (!client || stopped) return;
+      try {
+        client.publish(topic, JSON.stringify({ from: myId, ...payload }), { qos: 0 });
+      } catch {
+        /* a dropped publish just means the peer retries */
+      }
     }
-  }
 
-  function releaseWakeLock() {
-    try {
-      if (wakeLock) wakeLock.release();
-    } catch {
-      /* already released */
+    function handleEnvelope(envelope) {
+      if (!envelope || envelope.from === myId) return; // our own echo
+      if (envelope.hello) {
+        // Answer once so the other side knows we're here too.
+        if (!greeted) {
+          greeted = true;
+          publish({ hello: true });
+        }
+        if (!opened) {
+          opened = true;
+          handlers.onOpen();
+        }
+        return;
+      }
+      if (envelope.bye) {
+        handlers.onClose();
+        return;
+      }
+      if (envelope.data !== undefined) handlers.onData(envelope.data);
     }
-    wakeLock = null;
-  }
 
-  function teardownPeer() {
-    try {
-      if (conn) conn.close();
-      if (peer) peer.destroy();
-    } catch {
-      /* already closed */
-    }
-    conn = null;
-    peer = null;
-  }
-
-  function setupConnection(c) {
-    conn = c;
-    conn.on("open", () => {
-      clearConnectTimeout();
-      releaseWakeLock();
-      emitState("connected", { roomCode, isHost });
-    });
-    conn.on("data", (data) => emitData(data));
-    conn.on("close", () => emitState("disconnected"));
-    conn.on("error", (err) => emitState("error", err));
-  }
-
-  function friendlyPeerError(err) {
-    const type = err && err.type;
-    if (type === "peer-unavailable") {
-      return "That room code isn't open right now — ask your partner for a fresh code (codes only work while the host's page is open).";
-    }
-    if (type === "network" || type === "server-error" || type === "socket-error" || type === "socket-closed") {
-      return "Couldn't reach the connection service. Check your internet connection and try again.";
-    }
-    if (type === "unavailable-id") {
-      return "That room code is already taken — try creating a new room.";
-    }
-    return "Something went wrong connecting. Please try again.";
-  }
-
-  // The host just listens for one incoming connection on a fixed ID — there
-  // is no "retry with a different transport policy" for this side, because
-  // that would mean destroying and instantly recreating a peer with the
-  // SAME custom ID, and the signaling server doesn't always release an ID
-  // fast enough for that, which surfaces as a confusing "already taken"
-  // error. Forcing the *joiner's* ICE gathering to relay-only (below) is
-  // what actually rescues restrictive-NAT connections, since a relay
-  // candidate from either side can still pair with the other side's
-  // candidates. So the host just keeps listening with a generous, one-time
-  // fresh ID and lets the guest's retry logic do the work.
-  function createRoom() {
-    teardownPeer(); // clear out any stale attempt before starting fresh
-    roomCode = genCode();
-    return attemptAsHost(0);
-  }
-
-  function attemptAsHost(regenerateCount) {
-    attemptNumber += 1;
-    const myAttempt = attemptNumber;
-    return new Promise((resolve, reject) => {
-      if (typeof Peer === "undefined") return reject(new Error("PeerJS not loaded"));
-      isHost = true;
-      requestWakeLock();
-      peer = new Peer(ROOM_PREFIX + roomCode, { config: iceConfig(false) });
-
-      peer.on("open", () => {
-        emitState("waiting", { code: roomCode });
-        resolve(roomCode);
-      });
-      peer.on("connection", (c) => {
-        clearConnectTimeout();
-        setupConnection(c);
-      });
-      peer.on("error", (err) => {
-        if (myAttempt !== attemptNumber) return;
-        // The signaling server can take a moment to release a previous ID —
-        // if we land on a genuine collision, just pick a new code silently
-        // instead of dead-ending the user on an "already taken" error.
-        if (err && err.type === "unavailable-id" && regenerateCount < 3) {
-          teardownPeer();
-          roomCode = genCode();
-          attemptAsHost(regenerateCount + 1).then(resolve, reject);
+    return {
+      name: "relay",
+      start(opts) {
+        handlers = opts;
+        if (typeof mqtt === "undefined") {
+          handlers.onFail("the messaging library didn't load");
           return;
         }
-        releaseWakeLock();
-        emitState("error", friendlyPeerError(err));
-        reject(err);
-      });
-      peer.on("disconnected", () => {
-        if (peer && !peer.destroyed) peer.reconnect();
-      });
 
-      clearConnectTimeout();
-      connectTimeout = setTimeout(() => {
-        if (myAttempt !== attemptNumber) return;
-        if (conn && conn.open) return;
-        emitState("still-waiting");
-      }, ATTEMPT_TIMEOUT_MS);
+        const timer = setTimeout(() => {
+          if (!client || !client.connected) {
+            this.stop();
+            handlers.onFail("couldn't reach the connection service");
+          }
+        }, BROKER_CONNECT_MS);
+
+        try {
+          client = mqtt.connect(brokerUrl, {
+            clientId: `bg_${myId}`,
+            connectTimeout: BROKER_CONNECT_MS,
+            reconnectPeriod: 3000,
+            clean: true,
+          });
+        } catch (err) {
+          clearTimeout(timer);
+          handlers.onFail("couldn't reach the connection service");
+          return;
+        }
+
+        client.on("connect", () => {
+          clearTimeout(timer);
+          if (stopped) return;
+          client.subscribe(topic, { qos: 0 }, (err) => {
+            if (err) {
+              handlers.onFail("couldn't join the room channel");
+              return;
+            }
+            handlers.onReady();
+            publish({ hello: true });
+          });
+        });
+
+        client.on("message", (_topic, payload) => {
+          if (stopped) return;
+          try {
+            handleEnvelope(JSON.parse(payload.toString()));
+          } catch {
+            /* not ours, ignore */
+          }
+        });
+
+        client.on("error", () => {
+          if (!opened && !stopped) {
+            clearTimeout(timer);
+            this.stop();
+            handlers.onFail("the connection service refused the connection");
+          }
+        });
+      },
+      send(message) {
+        publish({ data: message });
+      },
+      isOpen() {
+        return opened;
+      },
+      stop() {
+        stopped = true;
+        try {
+          if (client) {
+            if (opened) publish({ bye: true });
+            client.end(true);
+          }
+        } catch {
+          /* already gone */
+        }
+        client = null;
+      },
+    };
+  }
+
+  // ------------------------------------------------------------------ p2p
+
+  function createPeerTransport() {
+    let peer = null;
+    let conn = null;
+    let stopped = false;
+    let handlers = {};
+    let timer = null;
+
+    const iceConfig = {
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:stun1.l.google.com:19302" },
+        { urls: "stun:global.stun.twilio.com:3478" },
+      ],
+    };
+
+    function attach(connection) {
+      conn = connection;
+      conn.on("open", () => {
+        clearTimeout(timer);
+        if (!stopped) handlers.onOpen();
+      });
+      conn.on("data", (data) => {
+        if (!stopped) handlers.onData(data);
+      });
+      conn.on("close", () => {
+        if (!stopped) handlers.onClose();
+      });
+    }
+
+    return {
+      name: "p2p",
+      start(opts) {
+        handlers = opts;
+        if (typeof Peer === "undefined") {
+          handlers.onFail("the peer-to-peer library didn't load");
+          return;
+        }
+        const id = `babegames-${roomCode}`;
+        peer = isHost ? new Peer(id, { config: iceConfig }) : new Peer({ config: iceConfig });
+
+        peer.on("open", () => {
+          if (stopped) return;
+          handlers.onReady();
+          if (!isHost) attach(peer.connect(id, { reliable: true }));
+        });
+        if (isHost) peer.on("connection", (c) => !stopped && attach(c));
+        peer.on("error", () => {
+          if (!stopped && (!conn || !conn.open)) {
+            this.stop();
+            handlers.onFail("couldn't open a direct connection");
+          }
+        });
+
+        timer = setTimeout(() => {
+          if (!conn || !conn.open) {
+            this.stop();
+            handlers.onFail("the direct connection timed out");
+          }
+        }, P2P_CONNECT_MS);
+      },
+      send(message) {
+        if (conn && conn.open) conn.send(message);
+      },
+      isOpen() {
+        return !!(conn && conn.open);
+      },
+      stop() {
+        stopped = true;
+        clearTimeout(timer);
+        try {
+          if (conn) conn.close();
+          if (peer) peer.destroy();
+        } catch {
+          /* already gone */
+        }
+        conn = null;
+        peer = null;
+      },
+    };
+  }
+
+  // -------------------------------------------------------- orchestration
+
+  // Both sides walk the same list in the same order, so they converge on the
+  // same transport without having to negotiate one.
+  function buildAttempts() {
+    return BROKERS.map((url) => () => createRelayTransport(url)).concat([() => createPeerTransport()]);
+  }
+
+  function connect() {
+    return new Promise((resolve, reject) => {
+      const attempts = buildAttempts();
+      let index = 0;
+      let waitTimer = null;
+
+      function tryNext(reason) {
+        clearTimeout(waitTimer);
+        if (transport) {
+          transport.stop();
+          transport = null;
+        }
+        if (index >= attempts.length) {
+          emitState("failed", reason || "couldn't connect");
+          reject(new Error(reason || "couldn't connect"));
+          return;
+        }
+
+        const candidate = attempts[index++]();
+        transport = candidate;
+        transportName = candidate.name;
+        const label = candidate.name === "relay" ? `route ${index} of ${attempts.length}` : "direct connection";
+        setStatus(`Trying ${label}…`);
+
+        candidate.start({
+          onReady() {
+            // We're on the network; now wait for the other player.
+            setStatus(isHost ? "Room is open — waiting for them to join…" : "Room found — saying hello…");
+            if (!isHost) {
+              waitTimer = setTimeout(() => {
+                if (!candidate.isOpen()) tryNext("no answer from the room");
+              }, GUEST_WAIT_MS);
+            }
+          },
+          onOpen() {
+            clearTimeout(waitTimer);
+            setStatus("Connected");
+            emitState("connected", { roomCode, isHost, via: candidate.name });
+            resolve(candidate.name);
+          },
+          onData(data) {
+            emitData(data);
+          },
+          onClose() {
+            emitState("disconnected");
+          },
+          onFail(reason) {
+            if (candidate.isOpen()) return; // already playing, ignore late noise
+            tryNext(reason);
+          },
+        });
+      }
+
+      tryNext(null);
     });
+  }
+
+  function createRoom() {
+    disconnect();
+    isHost = true;
+    // Set before connecting, so the code can be shared while we're still
+    // finding a route.
+    roomCode = genCode();
+    return connect().then(() => roomCode);
   }
 
   function joinRoom(code) {
-    teardownPeer(); // clear out any stale attempt before starting fresh
-    roomCode = code.trim().toUpperCase();
-    return attemptAsGuest(false);
+    disconnect();
+    isHost = false;
+    roomCode = String(code || "").trim().toUpperCase();
+    return connect();
   }
 
-  function attemptAsGuest(forceRelay) {
-    attemptNumber += 1;
-    const myAttempt = attemptNumber;
-    return new Promise((resolve, reject) => {
-      if (typeof Peer === "undefined") return reject(new Error("PeerJS not loaded"));
-      isHost = false;
-      requestWakeLock();
-      peer = new Peer({ config: iceConfig(forceRelay) });
-
-      peer.on("open", () => {
-        const c = peer.connect(ROOM_PREFIX + roomCode, { reliable: true });
-        setupConnection(c);
-        resolve();
-      });
-      peer.on("error", (err) => {
-        if (myAttempt !== attemptNumber) return;
-        clearConnectTimeout();
-        releaseWakeLock();
-        emitState("error", friendlyPeerError(err));
-        reject(err);
-      });
-      peer.on("disconnected", () => {
-        if (peer && !peer.destroyed) peer.reconnect();
-      });
-
-      clearConnectTimeout();
-      connectTimeout = setTimeout(() => {
-        if (myAttempt !== attemptNumber) return;
-        if (conn && conn.open) return;
-        if (!forceRelay) {
-          emitState("retrying");
-          teardownPeer();
-          attemptAsGuest(true).catch(() => {});
-        } else {
-          releaseWakeLock();
-          emitState("timeout");
-          teardownPeer();
-        }
-      }, ATTEMPT_TIMEOUT_MS);
-    });
+  function send(message) {
+    if (transport && transport.isOpen()) transport.send(message);
   }
 
-  function send(data) {
-    if (conn && conn.open) conn.send(data);
-  }
-
-  function onData(cb) {
-    dataListeners.push(cb);
-  }
-
-  function onState(cb) {
-    stateListeners.push(cb);
-  }
+  function onData(cb) { dataListeners.push(cb); }
+  function onState(cb) { stateListeners.push(cb); }
 
   function disconnect() {
-    attemptNumber += 1; // invalidate any in-flight attempt callbacks
-    clearConnectTimeout();
-    releaseWakeLock();
-    teardownPeer();
+    if (transport) {
+      transport.stop();
+      transport = null;
+    }
+    transportName = null;
     roomCode = null;
   }
 
@@ -257,15 +364,12 @@ const BabeOnline = (function () {
     onData,
     onState,
     disconnect,
-    get isHost() {
-      return isHost;
-    },
-    get roomCode() {
-      return roomCode;
-    },
-    get connected() {
-      return !!(conn && conn.open);
-    },
+    genCode,
+    get isHost() { return isHost; },
+    get roomCode() { return roomCode; },
+    get connected() { return !!(transport && transport.isOpen()); },
+    get via() { return transportName; },
+    get status() { return lastStatus; },
   };
 })();
 
@@ -274,6 +378,7 @@ const BabeOnline = (function () {
 const BabeOnlineUI = (function () {
   let onConnectedCallback = null;
   let onDisconnectedCallback = null;
+  let pendingCode = null;
 
   function ensureModal() {
     if (document.getElementById("online-modal")) return;
@@ -284,8 +389,7 @@ const BabeOnlineUI = (function () {
     overlay.innerHTML = `
       <div class="modal-box">
         <h3 style="margin-top:0;">Play Online</h3>
-        <p style="color:var(--text-dim); font-size:0.9rem;">Connects you directly with one other person &mdash; not public matchmaking.</p>
-        <p style="color:var(--accent-2); font-size:0.8rem;">If you opened this from WhatsApp/Instagram, tap the menu and choose "Open in browser" first &mdash; in-app browsers often block this kind of connection.</p>
+        <p style="color:var(--text-dim); font-size:0.9rem;">Just the two of you &mdash; share the code with your partner.</p>
         <div id="online-idle">
           <div class="btn-row">
             <button class="btn small" id="online-create-btn">Create a room</button>
@@ -299,12 +403,12 @@ const BabeOnlineUI = (function () {
           </div>
         </div>
         <div id="online-waiting" style="display:none; text-align:center;">
-          <p>Share this code or link with your partner:</p>
+          <p>Share this code with your partner:</p>
           <div class="scramble-word" id="online-code-display" style="font-size:2.2rem; letter-spacing:6px;"></div>
           <div class="btn-row" style="justify-content:center;">
             <button class="btn secondary small" id="online-copy-link-btn">Copy invite link</button>
           </div>
-          <p style="color:var(--text-dim); font-size:0.85rem;" id="online-status-text">Waiting for them to join&hellip; keep this tab open and screen on.</p>
+          <div class="connect-status" id="online-status-text">Starting&hellip;</div>
           <div class="btn-row" style="justify-content:center;">
             <button class="btn secondary small" id="online-cancel-btn">Cancel</button>
           </div>
@@ -356,13 +460,12 @@ const BabeOnlineUI = (function () {
     });
 
     overlay.querySelector("#online-copy-link-btn").addEventListener("click", () => {
-      const code = BabeOnline.roomCode;
+      const code = BabeOnline.roomCode || pendingCode;
       if (!code) return;
       const url = new URL(location.href);
       url.searchParams.set("room", code);
-      const text = url.toString();
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).catch(() => {});
+        navigator.clipboard.writeText(url.toString()).catch(() => {});
       }
       const btn = document.getElementById("online-copy-link-btn");
       const original = btn.textContent;
@@ -371,20 +474,18 @@ const BabeOnlineUI = (function () {
     });
 
     BabeOnline.onState((state, detail) => {
-      if (state === "connected") {
+      if (state === "status") {
+        const el = document.getElementById("online-status-text");
+        if (el) el.textContent = detail;
+      } else if (state === "connected") {
         document.getElementById("online-waiting").style.display = "none";
         document.getElementById("online-connected").style.display = "block";
         if (onConnectedCallback) setTimeout(() => onConnectedCallback(detail), 600);
-      } else if (state === "error") {
-        showError(detail);
-      } else if (state === "retrying") {
-        const statusEl = document.getElementById("online-status-text");
-        if (statusEl) statusEl.textContent = "Still working on it — trying a relay connection (this can take a bit longer on mobile data)…";
-      } else if (state === "still-waiting") {
-        const statusEl = document.getElementById("online-status-text");
-        if (statusEl) statusEl.textContent = "Still waiting for your partner… make sure they opened the code/link in a real browser (not WhatsApp/Instagram's in-app one) and their screen is on.";
-      } else if (state === "timeout") {
-        showError("Couldn't connect after two tries. Make sure you're both on a working internet connection (WiFi is usually more reliable than mobile data for this), that the room code is fresh, and that neither of you opened the link inside WhatsApp/Instagram's in-app browser.");
+      } else if (state === "failed") {
+        showError(
+          `Couldn't connect (${detail}). Check you're both online, make sure the code is fresh, ` +
+          `and open the link in your normal browser rather than inside WhatsApp or Instagram.`
+        );
       } else if (state === "disconnected") {
         if (onDisconnectedCallback) onDisconnectedCallback();
       }
@@ -393,25 +494,26 @@ const BabeOnlineUI = (function () {
 
   async function startCreate() {
     showWaiting();
-    document.getElementById("online-status-text").textContent = "Setting up your room…";
     try {
-      const code = await BabeOnline.createRoom();
-      document.getElementById("online-code-display").textContent = code;
-      document.getElementById("online-status-text").textContent = "Waiting for them to join… keep this tab open and screen on.";
-    } catch (err) {
-      showError(typeof err === "string" ? err : "Couldn't create a room. Try again.");
+      // The code exists as soon as this is called, so it can be shared
+      // while we're still finding a route.
+      const connecting = BabeOnline.createRoom();
+      pendingCode = BabeOnline.roomCode;
+      document.getElementById("online-code-display").textContent = pendingCode;
+      await connecting;
+    } catch {
+      /* the state listener already reported it */
     }
   }
 
   async function startJoin(code) {
     showWaiting();
     document.getElementById("online-code-display").textContent = code.toUpperCase();
-    document.getElementById("online-status-text").textContent = "Connecting…";
     document.getElementById("online-copy-link-btn").style.display = "none";
     try {
       await BabeOnline.joinRoom(code);
-    } catch (err) {
-      showError(typeof err === "string" ? err : "Couldn't join that room. Check the code and try again.");
+    } catch {
+      /* the state listener already reported it */
     }
   }
 
@@ -436,8 +538,7 @@ const BabeOnlineUI = (function () {
     document.getElementById("online-connected").style.display = "none";
     const errBox = document.getElementById("online-error");
     errBox.style.display = "block";
-    document.getElementById("online-error-text").textContent =
-      typeof message === "string" ? message : "Couldn't connect. Check your internet connection, then try again.";
+    document.getElementById("online-error-text").textContent = message;
   }
 
   function closeModal() {
@@ -457,9 +558,5 @@ const BabeOnlineUI = (function () {
     }
   }
 
-  function close() {
-    closeModal();
-  }
-
-  return { openLobby, close };
+  return { openLobby, close: closeModal };
 })();

@@ -20,7 +20,11 @@ const PAGES = [
 ];
 
 // Ids that the shared modules require every game page to provide.
-const SHARED_REQUIRED = ["setup-screen", "play-screen", "end-screen", "online-bar", "start-local", "start-online", "notify-widget", "profile-widget"];
+const SHARED_REQUIRED = [
+  "setup-screen", "play-screen", "end-screen", "online-bar",
+  "start-local", "start-online", "notify-widget", "profile-widget",
+  "winner-line", "result-subtitle",
+];
 
 let passed = 0;
 let failed = 0;
@@ -89,7 +93,7 @@ PAGES.forEach((page) => {
 
     test(`${page.html}: loads the engine scripts in the right order`, () => {
       const html = read(page.html);
-      const order = ["common.js", "online.js", "-rules.js", "game.js", "game-ui.js"];
+      const order = ["common.js", "celebrate.js", "mqtt", "online.js", "-rules.js", "game.js", "game-ui.js"];
       let cursor = -1;
       order.forEach((needle) => {
         const at = html.indexOf(needle);

@@ -474,3 +474,121 @@ label { font-size: 0.85rem; color: var(--text-dim); display: block; margin-botto
   margin: 8px 0;
 }
 
+.connect-status {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  margin: 12px 0 4px;
+  min-height: 20px;
+}
+.connect-status::after {
+  content: "";
+  display: inline-block;
+  width: 10px;
+  text-align: left;
+  animation: dots 1.4s steps(4, end) infinite;
+}
+@keyframes dots {
+  0% { content: ""; }
+  25% { content: "."; }
+  50% { content: ".."; }
+  75% { content: "..."; }
+}
+
+/* ---- how a game ends ---- */
+
+.result-title {
+  text-align: center;
+  font-size: clamp(1.7rem, 7vw, 2.6rem);
+  margin: 6px 0 4px;
+  animation: resultIn 0.65s cubic-bezier(0.18, 1.4, 0.4, 1) both;
+}
+.result-title.win {
+  color: var(--accent-2);
+  text-shadow: 0 0 26px rgba(255, 210, 63, 0.45);
+}
+.result-title.close, .result-title.tie, .result-title.done { color: var(--text); }
+
+.result-subtitle {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 0.98rem;
+  margin: 0 0 18px;
+  animation: fadeUp 0.5s ease-out 0.18s both;
+}
+
+@keyframes resultIn {
+  0% { opacity: 0; transform: scale(0.75) translateY(10px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes fadeUp {
+  0% { opacity: 0; transform: translateY(8px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.confetti-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 200;
+}
+.confetti-bit {
+  position: absolute;
+  top: -20px;
+  width: 10px;
+  height: 14px;
+  opacity: 0.95;
+  animation-name: confettiFall;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+@keyframes confettiFall {
+  0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(105vh) rotate(720deg); opacity: 0.9; }
+}
+
+/* ---- general polish ---- */
+
+#setup-screen, #play-screen, #end-screen {
+  animation: screenIn 0.32s ease-out both;
+}
+@keyframes screenIn {
+  0% { opacity: 0; transform: translateY(10px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.btn { will-change: transform; }
+.btn:active { transform: translateY(1px) scale(0.985); }
+
+.seat { transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease; }
+.seat.active { transform: translateY(-2px); }
+.seat-score { transition: color 0.2s ease; }
+
+.card { animation: cardIn 0.4s ease-out both; }
+.grid .card:nth-child(2) { animation-delay: 0.04s; }
+.grid .card:nth-child(3) { animation-delay: 0.08s; }
+.grid .card:nth-child(4) { animation-delay: 0.12s; }
+.grid .card:nth-child(5) { animation-delay: 0.16s; }
+.grid .card:nth-child(6) { animation-delay: 0.2s; }
+.grid .card:nth-child(n+7) { animation-delay: 0.24s; }
+@keyframes cardIn {
+  0% { opacity: 0; transform: translateY(14px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.modal-box { animation: modalIn 0.28s cubic-bezier(0.2, 1.2, 0.4, 1) both; }
+@keyframes modalIn {
+  0% { opacity: 0; transform: scale(0.94) translateY(8px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.feedback { transition: color 0.2s ease; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
