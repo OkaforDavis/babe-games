@@ -81,7 +81,7 @@ test("ncho four: a pit that hits four mid-sowing goes to its owner and play carr
   s.pits[7] = 3;  // -> four on the opponent's side, not the final seed
   s.pits[8] = 0;
   s.pits[9] = 0;  // the final seed rests here
-  s.pits[0] = 2;
+  s.pits[0] = 6;  // enough left that the game carries on
   const next = Ncho.applyAction(s, { type: "sow", pit: 5 }, 0);
   assert.strictEqual(next.pits[7], 0, "lifted out as it happened");
   assert.strictEqual(next.pits[13], 4, "by the player who owns that pit");
@@ -95,7 +95,7 @@ test("ncho four: your final seed making four is yours, and ends the turn", () =>
   s.pits[5] = 2;  // drops into 7 then 8
   s.pits[7] = 0;
   s.pits[8] = 3;  // final seed makes four here, on the opponent's side
-  s.pits[0] = 3;
+  s.pits[0] = 8;  // enough left that the game carries on
   const next = Ncho.applyAction(s, { type: "sow", pit: 5 }, 0);
   assert.strictEqual(next.pits[8], 0, "collected");
   assert.strictEqual(next.pits[6], 4, "by whoever sowed it, not the pit's owner");
@@ -162,16 +162,70 @@ test("ncho four: the player to move having nothing ends it, and the other takes 
   assert.strictEqual(next.winner, 0);
 });
 
-test("ncho four: play stops once fewer than four seeds remain", () => {
+test("ncho four: the last four go to whoever collected most recently", () => {
+  const s = four();
+  s.pits = new Array(14).fill(0);
+  s.pits[0] = 1;   // sows into the empty pit 1 and rests there
+  s.pits[2] = 1;
+  s.pits[8] = 1;   // the opponent still has seeds, so nobody is stuck
+  s.pits[9] = 1;
+  s.pits[6] = 20;
+  s.pits[13] = 24;
+  s.lastCaptureBy = 1;
+  const next = Ncho.applyAction(s, { type: "sow", pit: 0 }, 0);
+  assert.strictEqual(next.over, true, "four on the board is the end of it");
+  assert.strictEqual(Ncho.seedsOnBoard(next.pits), 0, "the board is cleared");
+  assert.strictEqual(next.pits[13], 28, "the last four went to the previous collector");
+  assert.strictEqual(next.pits[6], 20);
+  assert.strictEqual(next.winner, 1);
+});
+
+test("ncho four: who collected last is remembered across turns", () => {
+  const s = four();
+  s.pits = new Array(14).fill(0);
+  s.pits[5] = 2;   // slot 0's final seed makes four on pit 8
+  s.pits[7] = 0;
+  s.pits[8] = 3;
+  s.pits[0] = 6;   // plenty left so the game carries on
+  s.pits[10] = 6;
+  const captured = Ncho.applyAction(s, { type: "sow", pit: 5 }, 0);
+  assert.strictEqual(captured.lastCaptureBy, 0, "slot 0 took that one");
+
+  // A turn with no capture must not change who collected last.
+  const quiet = Ncho.applyAction(captured, { type: "sow", pit: 10 }, 1);
+  assert.ok(quiet, "the follow-up move is legal");
+  assert.deepStrictEqual(quiet.lastMove.captures, [], "nothing collected this turn");
+  assert.strictEqual(quiet.lastCaptureBy, 0, "so it is still slot 0");
+});
+
+test("ncho four: a player with nothing to sow still hands everything to the other", () => {
+  // This takes precedence over the last-four rule.
   const s = four();
   s.pits = new Array(14).fill(0);
   s.pits[0] = 1;
-  s.pits[8] = 1;
-  s.pits[6] = 25;
-  s.pits[13] = 21;
+  s.pits[2] = 3;   // slot 1's row is empty, so they cannot answer
+  s.pits[6] = 20;
+  s.pits[13] = 24;
+  s.lastCaptureBy = 1;
   const next = Ncho.applyAction(s, { type: "sow", pit: 0 }, 0);
-  assert.strictEqual(next.over, true, "nobody can reach four any more");
-  assert.strictEqual(next.winner, 0);
+  assert.strictEqual(next.over, true);
+  assert.strictEqual(next.pits[6], 24, "slot 0 sweeps the board, not the last collector");
+  assert.strictEqual(next.pits[13], 24);
+});
+
+test("ncho four: with nobody having collected, the last seeds go to nobody", () => {
+  const s = four();
+  s.pits = new Array(14).fill(0);
+  s.pits[0] = 1;
+  s.pits[2] = 1;
+  s.pits[8] = 1;
+  s.pits[9] = 1;
+  s.pits[6] = 22;
+  s.pits[13] = 22;
+  s.lastCaptureBy = null;
+  const next = Ncho.applyAction(s, { type: "sow", pit: 0 }, 0);
+  assert.strictEqual(next.over, true);
+  assert.strictEqual(next.winner, -1, "an even split stays a tie");
 });
 
 test("ncho four: seeds are never created or lost", () => {

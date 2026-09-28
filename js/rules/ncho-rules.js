@@ -52,6 +52,7 @@
       winner: null,
       message: "",
       lastMove: null,
+      lastCaptureBy: null,
       movesSinceCapture: 0,
       rev: 0,
     };
@@ -151,6 +152,7 @@
       turn: 1 - slot,
       message,
       lastMove: { slot, from: pit, before, steps, captures, extraTurn: false },
+      lastCaptureBy: captures.length ? captures[captures.length - 1].by : state.lastCaptureBy,
       movesSinceCapture: captures.length ? 0 : state.movesSinceCapture + 1,
       rev: state.rev + 1,
     };
@@ -158,14 +160,18 @@
     return settleFour(next);
   }
 
+  function sweepTo(state, pits, collector) {
+    let swept = 0;
+    PLAY_PITS.forEach((i) => { swept += pits[i]; pits[i] = 0; });
+    pits[houseOf(collector)] += swept;
+    return swept;
+  }
+
   function settleFour(state) {
     const pits = state.pits.slice();
     const left = seedsOnBoard(pits);
 
-    // Nobody can reach four any more, so the rest is dead wood.
-    if (left < CAPTURE_AT) {
-      return finish({ ...state, pits }, "Too few seeds left to make four — game over.");
-    }
+    if (left === 0) return finish({ ...state, pits }, "Every seed is home.");
 
     // The player to move has nothing to sow: whoever still holds seeds
     // takes everything left on the board.
@@ -173,12 +179,25 @@
     const stuck = pitsOf(toMove).every((i) => pits[i] === 0);
     if (stuck) {
       const collector = 1 - toMove;
-      let swept = 0;
-      PLAY_PITS.forEach((i) => { swept += pits[i]; pits[i] = 0; });
-      pits[houseOf(collector)] += swept;
+      const swept = sweepTo(state, pits, collector);
       return finish(
         { ...state, pits },
         `${state.names[toMove]} has nothing left to sow — ${state.names[collector]} takes the last ${swept}.`
+      );
+    }
+
+    // Down to the last four. Gathering them all into one pit to make a four
+    // is not realistically going to happen, so rather than shuffle them
+    // about forever they go to whoever collected most recently.
+    if (left <= CAPTURE_AT) {
+      const collector = state.lastCaptureBy;
+      if (collector == null) {
+        return finish({ ...state, pits }, "Too few seeds left to make four — game over.");
+      }
+      const swept = sweepTo(state, pits, collector);
+      return finish(
+        { ...state, pits },
+        `Only ${swept} left and no way to make four — ${state.names[collector]} collected last, so they take them.`
       );
     }
 
