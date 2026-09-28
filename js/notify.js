@@ -64,13 +64,19 @@ const BabeNotify = (function () {
       .catch(() => {});
   }
 
+  // Some in-app browsers define Notification but leave it empty, so checking
+  // that the name merely exists isn't enough — that crashed the page on load.
+  function notificationsSupported() {
+    return typeof Notification !== "undefined" && !!Notification && typeof Notification.requestPermission === "function";
+  }
+
   function permissionState() {
-    if (!("Notification" in window)) return "unsupported";
+    if (!notificationsSupported()) return "unsupported";
     return Notification.permission;
   }
 
   async function requestPermission() {
-    if (!("Notification" in window)) return "unsupported";
+    if (!notificationsSupported()) return "unsupported";
     if (Notification.permission === "default") {
       return Notification.requestPermission();
     }

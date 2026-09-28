@@ -1,0 +1,11 @@
+{
+  "name": "babe-games",
+  "private": true,
+  "description": "Classic Nigerian household games, playable in the browser.",
+  "scripts": {
+    "test": "node tests/run-all.js"
+  },
+  "devDependencies": {
+    "jsdom": "^30.1.1"
+  }
+}
